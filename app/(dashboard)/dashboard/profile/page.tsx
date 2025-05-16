@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { toast } from 'sonner';
+import toast from 'react-hot-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface Profile {
@@ -108,15 +108,23 @@ export default function ProfilePage() {
               <div className="flex items-center space-x-4">
                 <Skeleton className="h-20 w-20 rounded-full" />
                 <div className="space-y-2">
-                  <Skeleton className="h-4 w-[200px]" />
+                  <Skeleton className="h-6 w-[200px]" />
                   <Skeleton className="h-4 w-[150px]" />
+                  <Skeleton className="h-4 w-[180px]" />
+                  <Skeleton className="h-3 w-[120px]" />
                 </div>
               </div>
               <div className="space-y-4">
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
+                <div>
+                  <Skeleton className="h-4 w-[80px] mb-2" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+                <div>
+                  <Skeleton className="h-4 w-[80px] mb-2" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
               </div>
-              <Skeleton className="h-10 w-[100px]" />
+              <Skeleton className="h-10 w-[120px]" />
             </div>
           </CardContent>
         </Card>

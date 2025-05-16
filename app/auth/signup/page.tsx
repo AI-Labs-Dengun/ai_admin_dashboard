@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
-import { toast } from 'sonner';
+import toast from 'react-hot-toast';
 import { VerifyEmailModal } from '@/app/auth/components/verify-email-modal';
 
 export default function SignUp() {

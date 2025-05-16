@@ -47,12 +47,14 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="space-y-4">
-          <Skeleton className="h-12 w-12 rounded-full" />
-          <div className="space-y-2">
-            <Skeleton className="h-4 w-[250px]" />
-            <Skeleton className="h-4 w-[200px]" />
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="space-y-6 p-8 rounded-lg border border-border bg-card shadow-sm">
+          <div className="flex justify-center">
+            <Skeleton className="h-16 w-16 rounded-full" />
+          </div>
+          <div className="space-y-3">
+            <Skeleton className="h-5 w-[280px]" />
+            <Skeleton className="h-4 w-[220px] mx-auto" />
           </div>
         </div>
       </div>
