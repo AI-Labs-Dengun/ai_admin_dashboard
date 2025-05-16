@@ -60,11 +60,11 @@ export function DashboardSidebar({ isOpen, onToggle }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "bg-card border-r border-border h-full relative transition-all duration-300 ease-in-out",
+        "bg-card border-r border-border h-full relative transition-all duration-300 ease-in-out flex flex-col",
         isOpen ? "w-64" : "w-16",
       )}
     >
-      <div className="flex items-center h-16 px-4 border-b border-border">
+      <div className="flex items-center h-16 px-4 border-b border-border shrink-0">
         <div
           className={cn(
             "flex items-center gap-2 overflow-hidden",
@@ -84,7 +84,7 @@ export function DashboardSidebar({ isOpen, onToggle }: SidebarProps) {
         </div>
       </div>
 
-      <div className="py-4">
+      <div className="py-4 flex-1 overflow-y-auto">
         <div
           className={cn(
             "px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider",
@@ -102,15 +102,15 @@ export function DashboardSidebar({ isOpen, onToggle }: SidebarProps) {
                 key={route.href}
                 href={route.href}
                 className={cn(
-                  "flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors",
+                  "flex items-center px-2 py-2.5 text-sm font-medium rounded-md transition-colors",
                   isActive
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  !isOpen && "justify-center",
+                  !isOpen && "justify-center px-0",
                 )}
               >
                 <route.icon className={cn("h-5 w-5", isOpen && "mr-3")} />
-                {isOpen && <span>{route.name}</span>}
+                {isOpen && <span className="truncate">{route.name}</span>}
               </Link>
             )
           })}
@@ -119,11 +119,11 @@ export function DashboardSidebar({ isOpen, onToggle }: SidebarProps) {
 
       <div
         className={cn(
-          "absolute bottom-0 left-0 right-0 p-4 border-t border-border",
+          "border-t border-border p-4 shrink-0",
           !isOpen && "flex justify-center py-4 px-0",
         )}
       >
-        <div className={cn("flex items-center gap-2 text-sm text-muted-foreground", !isOpen && "sr-only")}>
+        <div className={cn("flex items-center mt-2 gap-2 text-sm text-muted-foreground", !isOpen && "sr-only")}>
           <Building2 className="h-4 w-4" />
           <span>Acme Real Estate</span>
         </div>

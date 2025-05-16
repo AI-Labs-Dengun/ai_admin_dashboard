@@ -5,7 +5,7 @@ import type React from "react"
 import { useState } from "react"
 import { DashboardSidebar } from "@/components/dashboard/sidebar"
 import { TopNav } from "@/components/dashboard/top-nav"
-import { cn } from "@/lib/utils"
+import { AuthGuard } from '@/app/components/auth-guard';
 
 export default function DashboardLayout({
   children,
@@ -15,14 +15,16 @@ export default function DashboardLayout({
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <DashboardSidebar isOpen={isSidebarOpen} onToggle={() => setIsSidebarOpen(!isSidebarOpen)} />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <TopNav onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} />
-        <main className={cn("flex-1 overflow-y-auto p-4 md:p-6", "transition-all duration-300 ease-in-out")}>
-          {children}
-        </main>
+    <AuthGuard>
+      <div className="flex min-h-screen">
+        <DashboardSidebar isOpen={isSidebarOpen} onToggle={() => setIsSidebarOpen(!isSidebarOpen)} />
+        <div className="flex-1">
+          <TopNav onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} />
+          <main className="p-6">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </AuthGuard>
   )
 }
