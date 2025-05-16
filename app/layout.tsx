@@ -4,7 +4,7 @@ import { Inter } from "next/font/google"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import SupabaseProvider from "./providers/supabase-provider"
-import { Toaster } from "react-hot-toast"
+import { ToastProvider } from "./providers/toast-provider"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -25,7 +25,7 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
           <SupabaseProvider>
             {children}
-            <Toaster position="bottom-right" />
+            <ToastProvider />
           </SupabaseProvider>
         </ThemeProvider>
       </body>

@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
+import { toastConfig } from '@/app/providers/toast-provider';
 import { VerifyEmailModal } from '@/app/auth/components/verify-email-modal';
 
 export default function SignUp() {
@@ -55,13 +56,13 @@ export default function SignUp() {
 
         if (profileError) throw profileError;
 
-        toast.success('Account created successfully! Please check your email to verify your account.');
+        toast.success('Account created successfully! Please check your email to verify your account.', toastConfig);
         setShowVerifyModal(true);
       }
     } catch (error: any) {
       console.error('Signup error:', error);
       setError(error.message);
-      toast.error('Error creating account: ' + error.message);
+      toast.error('Error creating account: ' + error.message, toastConfig);
     } finally {
       setLoading(false);
     }
