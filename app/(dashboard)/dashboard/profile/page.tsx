@@ -29,25 +29,78 @@ export default function ProfilePage() {
   useEffect(() => {
     const getProfile = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
         
-        if (user) {
-          const { data: profile, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', user.id)
-            .single();
-          
-          if (error) throw error;
-          
-          if (profile) {
-            setProfile(profile);
-            setFullName(profile.full_name || '');
-            setCompany(profile.company || '');
+        if (userError) throw userError;
+        if (!user) {
+          toast.error('Usuário não autenticado');
+          return;
+        }
+
+        // Primeiro, tenta buscar o perfil existente
+        const { data: existingProfile, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (profileError) {
+          // Se o erro for 406 (Not Acceptable) ou PGRST116 (no rows), significa que o perfil não existe
+          if (profileError.code === '406' || profileError.code === 'PGRST116') {
+            // Criar novo perfil com dados mínimos
+            const { data: newProfile, error: createError } = await supabase
+              .from('profiles')
+              .insert([
+                {
+                  id: user.id,
+                  email: user.email,
+                  full_name: user.user_metadata?.full_name || '',
+                  company: user.user_metadata?.company || '',
+                  is_super_admin: user.user_metadata?.is_super_admin || false,
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString()
+                }
+              ])
+              .select()
+              .single();
+
+            if (createError) {
+              // Se o erro for 409 (Conflict), significa que o perfil já existe
+              if (createError.code === '409') {
+                // Tentar buscar o perfil novamente
+                const { data: retryProfile, error: retryError } = await supabase
+                  .from('profiles')
+                  .select('*')
+                  .eq('id', user.id)
+                  .single();
+
+                if (retryError) throw retryError;
+                if (retryProfile) {
+                  setProfile(retryProfile);
+                  setFullName(retryProfile.full_name || '');
+                  setCompany(retryProfile.company || '');
+                }
+              } else {
+                console.error('Erro ao criar perfil:', createError);
+                throw createError;
+              }
+            } else if (newProfile) {
+              setProfile(newProfile);
+              setFullName(newProfile.full_name || '');
+              setCompany(newProfile.company || '');
+              toast.success('Perfil criado com sucesso!');
+            }
+          } else {
+            throw profileError;
           }
+        } else if (existingProfile) {
+          setProfile(existingProfile);
+          setFullName(existingProfile.full_name || '');
+          setCompany(existingProfile.company || '');
         }
       } catch (error: any) {
-        toast.error('Error loading profile: ' + error.message);
+        console.error('Erro ao carregar perfil:', error);
+        toast.error('Erro ao carregar perfil: ' + (error.message || 'Erro desconhecido'));
       } finally {
         setLoading(false);
       }
@@ -61,6 +114,10 @@ export default function ProfilePage() {
     setSaving(true);
 
     try {
+      if (!profile?.id) {
+        throw new Error('ID do perfil não encontrado');
+      }
+
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -68,11 +125,11 @@ export default function ProfilePage() {
           company: company,
           updated_at: new Date().toISOString(),
         })
-        .eq('id', profile?.id);
+        .eq('id', profile.id);
 
       if (error) throw error;
 
-      toast.success('Profile updated successfully');
+      toast.success('Perfil atualizado com sucesso!');
       
       // Atualiza o estado local do perfil
       setProfile(prev => prev ? {
@@ -81,7 +138,8 @@ export default function ProfilePage() {
         company: company,
       } : null);
     } catch (error: any) {
-      toast.error('Error updating profile: ' + error.message);
+      console.error('Erro ao atualizar perfil:', error);
+      toast.error('Erro ao atualizar perfil: ' + (error.message || 'Erro desconhecido'));
     } finally {
       setSaving(false);
     }
@@ -136,8 +194,8 @@ export default function ProfilePage() {
     <div className="container mx-auto py-10">
       <Card>
         <CardHeader>
-          <CardTitle>Profile</CardTitle>
-          <CardDescription>Update your profile information</CardDescription>
+          <CardTitle>Perfil</CardTitle>
+          <CardDescription>Atualize suas informações de perfil</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleUpdateProfile} className="space-y-6">
@@ -155,7 +213,7 @@ export default function ProfilePage() {
                   <p className="text-sm text-muted-foreground">{profile.company}</p>
                 )}
                 <p className="text-xs text-muted-foreground mt-1">
-                  Member since {new Date(profile?.created_at || '').toLocaleDateString()}
+                  Membro desde {new Date(profile?.created_at || '').toLocaleDateString()}
                 </p>
               </div>
             </div>
@@ -163,7 +221,7 @@ export default function ProfilePage() {
             <div className="space-y-4">
               <div>
                 <label htmlFor="fullName" className="text-sm font-medium">
-                  Full Name
+                  Nome Completo
                 </label>
                 <Input
                   id="fullName"
@@ -175,7 +233,7 @@ export default function ProfilePage() {
 
               <div>
                 <label htmlFor="company" className="text-sm font-medium">
-                  Company
+                  Empresa
                 </label>
                 <Input
                   id="company"
@@ -187,7 +245,7 @@ export default function ProfilePage() {
             </div>
 
             <Button type="submit" disabled={saving}>
-              {saving ? 'Saving...' : 'Save Changes'}
+              {saving ? 'Salvando...' : 'Salvar Alterações'}
             </Button>
           </form>
         </CardContent>
