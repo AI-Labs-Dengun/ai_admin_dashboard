@@ -57,6 +57,7 @@ export type Database = {
           user_id: string
           role: string
           allow_bot_access: boolean
+          token_limit: number
           created_at: string
         }
         Insert: {
@@ -65,6 +66,7 @@ export type Database = {
           user_id: string
           role?: string
           allow_bot_access?: boolean
+          token_limit?: number
           created_at?: string
         }
         Update: {
@@ -73,6 +75,7 @@ export type Database = {
           user_id?: string
           role?: string
           allow_bot_access?: boolean
+          token_limit?: number
           created_at?: string
         }
       }

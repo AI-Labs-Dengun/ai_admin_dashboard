@@ -1,6 +1,7 @@
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Tenant, TenantUser, TokenUsage, Bot } from "./types";
 import toast from "react-hot-toast";
+import { checkUserPermissions } from "./authManagement";
 
 interface TenantUserResponse {
   user_id: string;
@@ -26,15 +27,13 @@ export const loadData = async () => {
   const supabase = createClientComponentClient();
   
   try {
-    // Primeiro, verificar se o usuário é super-admin
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("is_super_admin")
-      .eq("id", user?.id)
-      .single();
+    // Verificar permissões
+    const permissions = await checkUserPermissions();
+    if (!permissions) {
+      throw new Error("Usuário não autenticado");
+    }
 
-    const isSuperAdmin = profile?.is_super_admin || false;
+    const isSuperAdmin = permissions.isSuperAdmin;
 
     // Se não for super-admin, retornar apenas os dados do próprio usuário
     if (!isSuperAdmin) {
@@ -59,7 +58,7 @@ export const loadData = async () => {
             )
           )
         `)
-        .eq("user_id", user?.id)
+        .eq("user_id", permissions.userId)
         .order("created_at", { ascending: false });
 
       if (userResponse.error) {
@@ -78,6 +77,14 @@ export const loadData = async () => {
         throw tenantResponse.error;
       }
 
+      // Buscar uso de tokens
+      const tokenUsageResponse = await supabase
+        .from("token_usage")
+        .select("*")
+        .eq("user_id", permissions.userId)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
       const processedUsers: TenantUser[] = (userResponse.data as unknown as TenantUserResponse[]).map(user => ({
         user_id: user.user_id,
         tenant_id: user.tenant_id,
@@ -85,7 +92,7 @@ export const loadData = async () => {
         allow_bot_access: user.allow_bot_access,
         token_limit: user.token_limit,
         profiles: user.profiles,
-        token_usage: {
+        token_usage: tokenUsageResponse.data?.[0] || {
           total_tokens: 0,
           last_used: new Date().toISOString()
         } as TokenUsage,
@@ -115,7 +122,7 @@ export const loadData = async () => {
         role,
         allow_bot_access,
         token_limit,
-        profiles (
+        profiles:user_id (
           email,
           full_name
         ),
@@ -145,27 +152,39 @@ export const loadData = async () => {
       throw tenantsResponse.error;
     }
 
-    const processedUsers: TenantUser[] = (usersResponse.data as unknown as TenantUserResponse[]).map(user => ({
-      user_id: user.user_id,
-      tenant_id: user.tenant_id,
-      role: user.role,
-      allow_bot_access: user.allow_bot_access,
-      token_limit: user.token_limit,
-      profiles: user.profiles,
-      token_usage: {
-        total_tokens: 0,
-        last_used: new Date().toISOString()
-      } as TokenUsage,
-      bots: user.tenant_bots?.map(tb => ({
-        id: tb.bot_id,
-        name: tb.bots?.name || "Bot Desconhecido",
-        enabled: tb.enabled,
-        token_usage: {
+    // Buscar uso de tokens para todos os usuários
+    const userIds = usersResponse.data.map(user => user.user_id);
+    const tokenUsageResponse = await supabase
+      .from("token_usage")
+      .select("*")
+      .in("user_id", userIds)
+      .order("created_at", { ascending: false });
+
+    const processedUsers: TenantUser[] = (usersResponse.data as unknown as TenantUserResponse[]).map(user => {
+      const userTokenUsage = tokenUsageResponse.data?.find(tu => tu.user_id === user.user_id);
+      
+      return {
+        user_id: user.user_id,
+        tenant_id: user.tenant_id,
+        role: user.role,
+        allow_bot_access: user.allow_bot_access,
+        token_limit: user.token_limit,
+        profiles: user.profiles,
+        token_usage: userTokenUsage || {
           total_tokens: 0,
           last_used: new Date().toISOString()
-        } as TokenUsage
-      })) as Bot[]
-    }));
+        } as TokenUsage,
+        bots: user.tenant_bots?.map(tb => ({
+          id: tb.bot_id,
+          name: tb.bots?.name || "Bot Desconhecido",
+          enabled: tb.enabled,
+          token_usage: {
+            total_tokens: 0,
+            last_used: new Date().toISOString()
+          } as TokenUsage
+        })) as Bot[]
+      };
+    });
 
     return {
       users: processedUsers,
@@ -173,7 +192,7 @@ export const loadData = async () => {
     };
   } catch (error) {
     console.error("Erro ao carregar dados:", error);
-    toast.error("Erro ao carregar dados. Por favor, tente novamente.");
+    toast.error(error instanceof Error ? error.message : "Erro ao carregar dados");
     throw error;
   }
 }; 

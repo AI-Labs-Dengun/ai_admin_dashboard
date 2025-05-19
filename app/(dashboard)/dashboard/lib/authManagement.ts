@@ -21,7 +21,7 @@ export const checkUserPermissions = async (): Promise<UserPermissions | null> =>
       return null;
     }
 
-    // Verificar se o perfil existe
+    // Verificar se o perfil existe e se é super-admin
     const { data: existingProfile, error: profileError } = await supabase
       .from('profiles')
       .select('is_super_admin, email')
@@ -40,7 +40,7 @@ export const checkUserPermissions = async (): Promise<UserPermissions | null> =>
             {
               id: user.id,
               email: user.email,
-              is_super_admin: false,
+              is_super_admin: user.user_metadata?.is_super_admin || false,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString()
             }
@@ -64,7 +64,7 @@ export const checkUserPermissions = async (): Promise<UserPermissions | null> =>
         }
 
         return {
-          isSuperAdmin: false,
+          isSuperAdmin: user.user_metadata?.is_super_admin || false,
           hasBotAccess: tenantUser?.allow_bot_access || false,
           userId: user.id,
           email: user.email

@@ -99,36 +99,76 @@ export default function TenantsPage() {
 
   const loadData = async () => {
     try {
-      const [tenantsResponse, botsResponse] = await Promise.all([
-        supabase
-          .from("tenants")
-          .select(`
-            *,
-            tenant_bots!inner (
-              bot_id,
-              enabled
-            )
-          `)
-          .order("created_at", { ascending: false }),
-        supabase.from("bots").select("*").order("name"),
-      ]);
+      // Primeiro, verificar se é super-admin
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("is_super_admin")
+        .eq("id", (await supabase.auth.getUser()).data.user?.id)
+        .single();
 
-      if (tenantsResponse.error) {
-        console.error("Erro ao carregar tenants:", tenantsResponse.error);
-        throw new Error(tenantsResponse.error.message);
+      if (profileError) {
+        console.error("Erro ao verificar permissões:", profileError);
+        throw new Error(profileError.message);
       }
 
-      if (botsResponse.error) {
-        console.error("Erro ao carregar bots:", botsResponse.error);
-        throw new Error(botsResponse.error.message);
+      if (!profileData?.is_super_admin) {
+        toast.error("Apenas super-admins podem acessar esta página");
+        router.push('/dashboard');
+        return;
       }
 
-      if (!tenantsResponse.data || !botsResponse.data) {
-        throw new Error("Dados não encontrados");
+      // Carregar os bots primeiro
+      const { data: botsData, error: botsError } = await supabase
+        .from("bots")
+        .select("*")
+        .order("name");
+
+      if (botsError) {
+        console.error("Erro ao carregar bots:", botsError);
+        throw new Error(botsError.message);
       }
 
-      setTenants(tenantsResponse.data);
-      setBots(botsResponse.data);
+      if (!botsData) {
+        throw new Error("Dados de bots não encontrados");
+      }
+
+      setBots(botsData);
+
+      // Carregar os tenants
+      const { data: tenantsData, error: tenantsError } = await supabase
+        .from("tenants")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (tenantsError) {
+        console.error("Erro ao carregar tenants:", tenantsError);
+        throw new Error(tenantsError.message);
+      }
+
+      if (!tenantsData || tenantsData.length === 0) {
+        setTenants([]);
+        return;
+      }
+
+      // Carregar os tenant_bots
+      const { data: tenantBotsData, error: tenantBotsError } = await supabase
+        .from("tenant_bots")
+        .select("tenant_id, bot_id, enabled")
+        .in("tenant_id", tenantsData.map(t => t.id))
+        .order("tenant_id");
+
+      if (tenantBotsError) {
+        console.error("Erro ao carregar tenant_bots:", tenantBotsError);
+        throw new Error(tenantBotsError.message);
+      }
+
+      // Mapear os tenant_bots para cada tenant
+      const tenantsWithBots = tenantsData.map(tenant => ({
+        ...tenant,
+        tenant_bots: tenantBotsData?.filter(tb => tb.tenant_id === tenant.id) || []
+      }));
+
+      setTenants(tenantsWithBots);
     } catch (error) {
       console.error("Erro ao carregar dados:", error instanceof Error ? error.message : "Erro desconhecido");
       toast.error("Erro ao carregar dados. Por favor, tente novamente.");
