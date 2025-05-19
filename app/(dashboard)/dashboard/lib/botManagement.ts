@@ -103,4 +103,4 @@ export const toggleBot = async (userId: string, botId: string, currentEnabled: b
     toast.error("Erro ao atualizar status do bot");
     throw error;
   }
-}; 
+};  
