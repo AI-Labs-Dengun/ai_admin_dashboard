@@ -18,6 +18,7 @@ export interface Bot {
   name: string;
   enabled: boolean;
   token_usage?: TokenUsage;
+  isInTenant?: boolean;
 }
 
 export interface TenantUser {
@@ -33,6 +34,9 @@ export interface TenantUser {
 
 export interface NewUser {
   email: string;
+  full_name: string;
+  company: string;
   tenant_id: string;
   allow_bot_access: boolean;
+  selected_bots?: string[];
 } 

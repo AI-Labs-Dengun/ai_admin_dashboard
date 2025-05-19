@@ -1,5 +1,6 @@
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import toast from "react-hot-toast";
+import { checkUserPermissions } from "./authManagement";
 
 export const enableBot = async (tenantId: string, botId: string) => {
   const supabase = createClientComponentClient();
@@ -69,6 +70,12 @@ export const toggleBotAccess = async (userId: string, tenantId: string, currentV
   const supabase = createClientComponentClient();
   
   try {
+    // Verificar permissões
+    const permissions = await checkUserPermissions();
+    if (!permissions?.isSuperAdmin) {
+      throw new Error("Sem permissão para atualizar acesso aos bots");
+    }
+
     const { error } = await supabase
       .from("tenant_users")
       .update({ allow_bot_access: !currentValue })
@@ -76,31 +83,65 @@ export const toggleBotAccess = async (userId: string, tenantId: string, currentV
 
     if (error) throw error;
 
-    toast.success("Acesso atualizado com sucesso!");
+    toast.success("Acesso aos bots atualizado com sucesso!");
     return true;
   } catch (error) {
-    console.error("Erro ao atualizar acesso:", error);
-    toast.error("Erro ao atualizar acesso");
+    console.error("Erro ao atualizar acesso aos bots:", error);
+    toast.error(error instanceof Error ? error.message : "Erro ao atualizar acesso aos bots");
     throw error;
   }
 };
 
-export const toggleBot = async (userId: string, botId: string, currentEnabled: boolean) => {
+export const toggleBot = async (tenantId: string, botId: string, currentEnabled: boolean) => {
   const supabase = createClientComponentClient();
   
   try {
-    const { error } = await supabase
+    // Verificar permissões
+    const permissions = await checkUserPermissions();
+    if (!permissions?.isSuperAdmin) {
+      throw new Error("Sem permissão para atualizar status do bot");
+    }
+
+    // Verificar se o bot já está associado ao tenant
+    const { data: existingBot, error: checkError } = await supabase
       .from("tenant_bots")
-      .update({ enabled: !currentEnabled })
-      .match({ user_id: userId, bot_id: botId });
+      .select("id")
+      .match({ tenant_id: tenantId, bot_id: botId })
+      .single();
 
-    if (error) throw error;
+    if (checkError && checkError.code !== "PGRST116") {
+      throw checkError;
+    }
 
-    toast.success("Status do bot atualizado com sucesso");
+    if (existingBot) {
+      // Se o bot já existe, atualizar o status
+      const { error: updateError } = await supabase
+        .from("tenant_bots")
+        .update({ enabled: !currentEnabled })
+        .match({ tenant_id: tenantId, bot_id: botId });
+
+      if (updateError) throw updateError;
+    } else {
+      // Se o bot não existe, criar a associação
+      const { error: insertError } = await supabase
+        .from("tenant_bots")
+        .insert([
+          {
+            tenant_id: tenantId,
+            bot_id: botId,
+            enabled: true,
+            created_at: new Date().toISOString()
+          }
+        ]);
+
+      if (insertError) throw insertError;
+    }
+
+    toast.success("Status do bot atualizado com sucesso!");
     return true;
   } catch (error) {
     console.error("Erro ao atualizar status do bot:", error);
-    toast.error("Erro ao atualizar status do bot");
+    toast.error(error instanceof Error ? error.message : "Erro ao atualizar status do bot");
     throw error;
   }
 };  
