@@ -13,6 +13,17 @@ export const createUser = async (newUser: NewUser) => {
       throw new Error("Sem permissão para criar usuários");
     }
 
+    // Verificar se o usuário já existe
+    const { data: existingUser } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("email", newUser.email)
+      .single();
+
+    if (existingUser) {
+      throw new Error("Este email já está cadastrado");
+    }
+
     // Primeiro, criar o usuário no auth
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: newUser.email,
@@ -24,8 +35,17 @@ export const createUser = async (newUser: NewUser) => {
       },
     });
 
-    if (authError) throw authError;
+    if (authError) {
+      if (authError.message.includes("Too Many Requests")) {
+        throw new Error("Muitas tentativas. Por favor, aguarde um minuto e tente novamente.");
+      }
+      throw authError;
+    }
+    
     if (!authData.user) throw new Error("Usuário não criado");
+
+    // Aguardar um momento para garantir que o usuário foi criado
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
     // Criar perfil do usuário
     const { error: profileError } = await supabase
@@ -40,7 +60,11 @@ export const createUser = async (newUser: NewUser) => {
         }
       ]);
 
-    if (profileError) throw profileError;
+    if (profileError) {
+      // Se houver erro ao criar o perfil, tentar limpar o usuário do auth
+      await supabase.auth.admin.deleteUser(authData.user.id);
+      throw profileError;
+    }
 
     // Depois, associar ao tenant
     const { error: tenantError } = await supabase.from("tenant_users").insert([
@@ -53,7 +77,12 @@ export const createUser = async (newUser: NewUser) => {
       },
     ]);
 
-    if (tenantError) throw tenantError;
+    if (tenantError) {
+      // Se houver erro ao associar ao tenant, limpar o perfil e o usuário
+      await supabase.from("profiles").delete().eq("id", authData.user.id);
+      await supabase.auth.admin.deleteUser(authData.user.id);
+      throw tenantError;
+    }
 
     toast.success("Usuário criado com sucesso!");
     return true;
