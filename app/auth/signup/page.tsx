@@ -35,6 +35,7 @@ export default function SignUp() {
           data: {
             full_name: fullName,
             company: company,
+            is_super_admin: true,
           },
           emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
@@ -43,19 +44,6 @@ export default function SignUp() {
       if (signUpError) throw signUpError;
 
       if (authData.user) {
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert([
-            {
-              id: authData.user.id,
-              full_name: fullName,
-              email: email,
-              company: company,
-            },
-          ]);
-
-        if (profileError) throw profileError;
-
         toast.success('Account created successfully! Please check your email to verify your account.', toastConfig);
         setShowVerifyModal(true);
       }
@@ -101,21 +89,21 @@ export default function SignUp() {
               </div>
               <div className="space-y-2">
                 <Input
-                  type="text"
-                  placeholder="Company"
-                  value={company}
-                  onChange={(e) => setCompany(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Input
                   type="password"
                   placeholder="Password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength={6}
+                />
+              </div>
+              <div className="space-y-2">
+                <Input
+                  type="text"
+                  placeholder="Company"
+                  value={company}
+                  onChange={(e) => setCompany(e.target.value)}
+                  required
                 />
               </div>
             </CardContent>
