@@ -14,6 +14,7 @@ import { TenantUser, Tenant, NewUser } from "@/app/(dashboard)/dashboard/lib/typ
 import { loadData } from "@/app/(dashboard)/dashboard/lib/loadData";
 import { createUser, deleteUser, updateTokenLimit } from "@/app/(dashboard)/dashboard/lib/userManagement";
 import { toggleBotAccess, toggleBot } from "@/app/(dashboard)/dashboard/lib/botManagement";
+import { checkUserPermissions } from "@/app/(dashboard)/dashboard/lib/authManagement";
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<TenantUser[]>([]);
@@ -34,20 +35,25 @@ export default function AdminUsersPage() {
   }, []);
 
   const checkUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      router.push("/login");
-      return;
-    }
+    try {
+      const permissions = await checkUserPermissions();
+      
+      if (!permissions) {
+        router.push('/auth/signin');
+        return;
+      }
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
+      if (!permissions.isSuperAdmin) {
+        toast.error('Você não tem permissão para acessar esta página');
+        router.push('/dashboard');
+        return;
+      }
 
-    if (profile?.role !== "super-admin") {
-      router.push("/dashboard");
+      fetchData();
+    } catch (error) {
+      console.error('Erro ao verificar permissões:', error);
+      toast.error('Erro ao verificar permissões');
+      router.push('/dashboard');
     }
   };
 

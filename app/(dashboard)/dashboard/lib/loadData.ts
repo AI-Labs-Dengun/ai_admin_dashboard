@@ -13,14 +13,16 @@ interface TenantUserResponse {
     email: string;
     full_name: string;
   };
-  tenant_bots: Array<{
-    bot_id: string;
-    enabled: boolean;
-    bots: {
-      id: string;
-      name: string;
-    };
-  }>;
+  tenants: {
+    tenant_bots: Array<{
+      bot_id: string;
+      enabled: boolean;
+      bots: {
+        id: string;
+        name: string;
+      };
+    }>;
+  };
 }
 
 export const loadData = async () => {
@@ -96,7 +98,7 @@ export const loadData = async () => {
           total_tokens: 0,
           last_used: new Date().toISOString()
         } as TokenUsage,
-        bots: user.tenant_bots?.map(tb => ({
+        bots: user.tenants?.tenant_bots?.map(tb => ({
           id: tb.bot_id,
           name: tb.bots?.name || "Bot Desconhecido",
           enabled: tb.enabled,
@@ -126,12 +128,14 @@ export const loadData = async () => {
           email,
           full_name
         ),
-        tenant_bots (
-          bot_id,
-          enabled,
-          bots (
-            id,
-            name
+        tenants!tenant_id (
+          tenant_bots (
+            bot_id,
+            enabled,
+            bots (
+              id,
+              name
+            )
           )
         )
       `)
@@ -174,7 +178,7 @@ export const loadData = async () => {
           total_tokens: 0,
           last_used: new Date().toISOString()
         } as TokenUsage,
-        bots: user.tenant_bots?.map(tb => ({
+        bots: user.tenants?.tenant_bots?.map(tb => ({
           id: tb.bot_id,
           name: tb.bots?.name || "Bot Desconhecido",
           enabled: tb.enabled,
@@ -182,7 +186,7 @@ export const loadData = async () => {
             total_tokens: 0,
             last_used: new Date().toISOString()
           } as TokenUsage
-        })) as Bot[]
+        })) as Bot[] || []
       };
     });
 
