@@ -4,7 +4,7 @@ export type Database = {
       profiles: {
         Row: {
           id: string
-          email: string | null
+          email: string
           full_name: string | null
           avatar_url: string | null
           company: string | null
@@ -14,7 +14,7 @@ export type Database = {
         }
         Insert: {
           id: string
-          email?: string | null
+          email: string
           full_name?: string | null
           avatar_url?: string | null
           company?: string | null
@@ -24,7 +24,7 @@ export type Database = {
         }
         Update: {
           id?: string
-          email?: string | null
+          email?: string
           full_name?: string | null
           avatar_url?: string | null
           company?: string | null
@@ -158,6 +158,17 @@ export type Database = {
           tenant_id: string
           bot_id: string
           total_tokens: number
+        }
+      }
+      user_roles_summary: {
+        Row: {
+          user_id: string
+          email: string
+          full_name: string | null
+          company: string | null
+          is_super_admin: boolean
+          role_summary: 'super-admin' | 'admin' | 'user'
+          associated_tenants: string[]
         }
       }
     }
