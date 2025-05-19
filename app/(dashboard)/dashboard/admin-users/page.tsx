@@ -7,14 +7,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "react-hot-toast";
-import { TenantUser, Tenant, NewUser } from "@/app/(dashboard)/dashboard/lib/types";
+import { TenantUser, Tenant, NewUser, Bot } from "@/app/(dashboard)/dashboard/lib/types";
 import { loadData } from "@/app/(dashboard)/dashboard/lib/loadData";
 import { createUser, deleteUser, updateTokenLimit } from "@/app/(dashboard)/dashboard/lib/userManagement";
 import { toggleBotAccess, toggleBot } from "@/app/(dashboard)/dashboard/lib/botManagement";
 import { checkUserPermissions } from "@/app/(dashboard)/dashboard/lib/authManagement";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<TenantUser[]>([]);
@@ -22,9 +25,16 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [newUser, setNewUser] = useState<NewUser>({
     email: "",
+    full_name: "",
+    company: "",
     tenant_id: "",
     allow_bot_access: false,
+    selected_bots: []
   });
+
+  const [bots, setBots] = useState<Bot[]>([]);
+  const [selectedTenant, setSelectedTenant] = useState<string>("");
+  const [tenantBots, setTenantBots] = useState<Bot[]>([]);
 
   const router = useRouter();
   const supabase = createClientComponentClient();
@@ -62,6 +72,19 @@ export default function AdminUsersPage() {
       const { users: fetchedUsers, tenants: fetchedTenants } = await loadData();
       setUsers(fetchedUsers);
       setTenants(fetchedTenants);
+
+      // Buscar lista de bots
+      const { data: botsData, error: botsError } = await supabase
+        .from("bots")
+        .select("*")
+        .order("name");
+
+      if (botsError) {
+        console.error("Erro ao carregar bots:", botsError);
+        throw botsError;
+      }
+
+      setBots(botsData || []);
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
       toast.error("Erro ao carregar dados");
@@ -70,13 +93,79 @@ export default function AdminUsersPage() {
     }
   };
 
+  const fetchTenantBots = async (tenantId: string) => {
+    try {
+      // Buscar todos os bots disponíveis
+      const { data: allBots, error: allBotsError } = await supabase
+        .from("bots")
+        .select("*")
+        .order("name");
+
+      if (allBotsError) {
+        console.error("Erro ao carregar bots:", allBotsError);
+        throw allBotsError;
+      }
+
+      // Buscar bots associados ao tenant
+      const { data: tenantBotsData, error: tenantBotsError } = await supabase
+        .from("tenant_bots")
+        .select(`
+          bot_id,
+          enabled,
+          bots (
+            id,
+            name
+          )
+        `)
+        .eq("tenant_id", tenantId);
+
+      if (tenantBotsError) {
+        console.error("Erro ao carregar bots do tenant:", tenantBotsError);
+        throw tenantBotsError;
+      }
+
+      // Mapear os bots do tenant
+      const tenantBotIds = tenantBotsData?.map(tb => tb.bot_id) || [];
+      
+      // Combinar todos os bots com o status do tenant
+      const formattedBots = allBots?.map(bot => ({
+        id: bot.id,
+        name: bot.name,
+        enabled: tenantBotsData?.find(tb => tb.bot_id === bot.id)?.enabled || false,
+        isInTenant: tenantBotIds.includes(bot.id)
+      })) || [];
+
+      setTenantBots(formattedBots);
+      
+      // Se estiver criando um novo usuário, selecionar todos os bots do tenant por padrão
+      if (newUser.tenant_id === tenantId) {
+        setNewUser(prev => ({
+          ...prev,
+          selected_bots: tenantBotIds
+        }));
+      }
+    } catch (error) {
+      console.error("Erro ao carregar bots do tenant:", error);
+      toast.error("Erro ao carregar bots do tenant");
+    }
+  };
+
+  useEffect(() => {
+    if (selectedTenant) {
+      fetchTenantBots(selectedTenant);
+    }
+  }, [selectedTenant]);
+
   const handleCreateUser = async () => {
     try {
       await createUser(newUser);
       setNewUser({
         email: "",
+        full_name: "",
+        company: "",
         tenant_id: "",
         allow_bot_access: false,
+        selected_bots: []
       });
       fetchData();
     } catch (error) {
@@ -113,12 +202,56 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleToggleTenantBot = async (botId: string, currentEnabled: boolean) => {
+    try {
+      if (!selectedTenant) return;
+      await toggleBot(selectedTenant, botId, currentEnabled);
+      fetchTenantBots(selectedTenant);
+    } catch (error) {
+      console.error("Erro ao atualizar status do bot:", error);
+    }
+  };
+
   const handleUpdateTokenLimit = async (userId: string, tenantId: string, newLimit: number) => {
     try {
       await updateTokenLimit(userId, tenantId, newLimit);
       fetchData();
     } catch (error) {
       console.error("Erro ao atualizar limite de tokens:", error);
+    }
+  };
+
+  const handleUpdateUserBots = async (userId: string, tenantId: string, selectedBots: string[]) => {
+    try {
+      // Primeiro, remover todas as associações existentes
+      const { error: deleteError } = await supabase
+        .from("tenant_bots")
+        .delete()
+        .match({ tenant_id: tenantId, user_id: userId });
+
+      if (deleteError) throw deleteError;
+
+      // Depois, criar as novas associações
+      if (selectedBots.length > 0) {
+        const botInserts = selectedBots.map(botId => ({
+          tenant_id: tenantId,
+          bot_id: botId,
+          enabled: true,
+          created_at: new Date().toISOString()
+        }));
+
+        const { error: insertError } = await supabase
+          .from("tenant_bots")
+          .insert(botInserts);
+
+        if (insertError) throw insertError;
+      }
+
+      toast.success("Bots do usuário atualizados com sucesso!");
+      fetchData();
+    } catch (error) {
+      console.error("Erro ao atualizar bots do usuário:", error);
+      toast.error("Erro ao atualizar bots do usuário");
     }
   };
 
@@ -138,6 +271,15 @@ export default function AdminUsersPage() {
         <CardContent>
           <div className="grid gap-4">
             <div className="grid gap-2">
+              <Label htmlFor="full_name">Nome Completo</Label>
+              <Input
+                id="full_name"
+                value={newUser.full_name}
+                onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })}
+                placeholder="Digite o nome completo"
+              />
+            </div>
+            <div className="grid gap-2">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
@@ -148,10 +290,22 @@ export default function AdminUsersPage() {
               />
             </div>
             <div className="grid gap-2">
+              <Label htmlFor="company">Empresa</Label>
+              <Input
+                id="company"
+                value={newUser.company}
+                onChange={(e) => setNewUser({ ...newUser, company: e.target.value })}
+                placeholder="Digite o nome da empresa"
+              />
+            </div>
+            <div className="grid gap-2">
               <Label htmlFor="tenant">Tenant</Label>
               <Select
                 value={newUser.tenant_id}
-                onValueChange={(value) => setNewUser({ ...newUser, tenant_id: value })}
+                onValueChange={(value) => {
+                  setNewUser({ ...newUser, tenant_id: value });
+                  setSelectedTenant(value);
+                }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione um tenant" />
@@ -173,6 +327,71 @@ export default function AdminUsersPage() {
               />
               <Label htmlFor="bot-access">Permitir acesso aos bots</Label>
             </div>
+            {newUser.allow_bot_access && newUser.tenant_id && (
+              <Card className="mt-4">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">Bots Disponíveis no Tenant</CardTitle>
+                  <CardDescription>
+                    Selecione quais bots este admin terá acesso
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-3">
+                    {tenantBots.map((bot) => (
+                      <div 
+                        key={bot.id} 
+                        className={`flex items-center justify-between p-3 rounded-lg border ${
+                          !bot.isInTenant ? 'bg-muted/50' : 'bg-card'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <Checkbox
+                            id={`bot-${bot.id}`}
+                            checked={newUser.selected_bots?.includes(bot.id)}
+                            onCheckedChange={(checked) => {
+                              const updatedBots = checked
+                                ? [...(newUser.selected_bots || []), bot.id]
+                                : (newUser.selected_bots || []).filter(id => id !== bot.id);
+                              setNewUser({ ...newUser, selected_bots: updatedBots });
+                            }}
+                            disabled={!bot.isInTenant}
+                          />
+                          <div className="space-y-1">
+                            <Label 
+                              htmlFor={`bot-${bot.id}`} 
+                              className={`text-sm font-medium ${!bot.isInTenant ? 'text-muted-foreground' : ''}`}
+                            >
+                              {bot.name}
+                            </Label>
+                            {!bot.isInTenant && (
+                              <Badge variant="secondary" className="text-xs">
+                                Não disponível no tenant
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                          <div className="flex items-center space-x-2">
+                            <Label 
+                              htmlFor={`enabled-${bot.id}`} 
+                              className="text-sm text-muted-foreground"
+                            >
+                              {bot.enabled ? "Ativado" : "Desativado"}
+                            </Label>
+                            <Switch
+                              id={`enabled-${bot.id}`}
+                              checked={bot.enabled}
+                              onCheckedChange={(checked) => handleToggleTenantBot(bot.id, bot.enabled)}
+                              disabled={!bot.isInTenant}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
             <Button onClick={handleCreateUser}>Criar Usuário</Button>
           </div>
         </CardContent>
@@ -242,25 +461,68 @@ export default function AdminUsersPage() {
 
                 {/* Lista de bots associados */}
                 {user.bots && user.bots.length > 0 && (
-                  <div>
-                    <p className="text-sm text-gray-500 mb-2">Bots Associados</p>
-                    <div className="space-y-2">
-                      {user.bots.map((bot) => (
-                        <div key={bot.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                          <div>
-                            <p className="font-medium">{bot.name}</p>
-                            <p className="text-sm text-gray-500">
-                              Tokens: {bot.token_usage?.total_tokens || 0}
-                            </p>
+                  <Card className="mt-4">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-lg">Bots Associados</CardTitle>
+                      <CardDescription>
+                        Gerencie os bots disponíveis para este admin
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid gap-3">
+                        {user.bots.map((bot) => (
+                          <div 
+                            key={bot.id} 
+                            className="flex items-center justify-between p-3 rounded-lg border bg-card"
+                          >
+                            <div className="flex items-center space-x-3">
+                              <Checkbox
+                                id={`user-bot-${user.user_id}-${bot.id}`}
+                                checked={true}
+                                onCheckedChange={(checked) => {
+                                  if (!checked) {
+                                    const updatedBots = user.bots?.filter(b => b.id !== bot.id) || [];
+                                    handleUpdateUserBots(user.user_id, user.tenant_id, updatedBots.map(b => b.id));
+                                  }
+                                }}
+                              />
+                              <div className="space-y-1">
+                                <Label 
+                                  htmlFor={`user-bot-${user.user_id}-${bot.id}`}
+                                  className="text-sm font-medium"
+                                >
+                                  {bot.name}
+                                </Label>
+                                <div className="flex items-center space-x-2">
+                                  <Badge variant="outline" className="text-xs">
+                                    {bot.token_usage?.total_tokens || 0} tokens
+                                  </Badge>
+                                  <span className="text-xs text-muted-foreground">
+                                    Último uso: {bot.token_usage?.last_used ? new Date(bot.token_usage.last_used).toLocaleDateString() : 'Nunca'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-3">
+                              <div className="flex items-center space-x-2">
+                                <Label 
+                                  htmlFor={`enabled-${user.user_id}-${bot.id}`} 
+                                  className="text-sm text-muted-foreground"
+                                >
+                                  {bot.enabled ? "Ativado" : "Desativado"}
+                                </Label>
+                                <Switch
+                                  id={`enabled-${user.user_id}-${bot.id}`}
+                                  checked={bot.enabled}
+                                  onCheckedChange={() => handleToggleBot(user.user_id, bot.id, bot.enabled)}
+                                />
+                              </div>
+                            </div>
                           </div>
-                          <Switch
-                            checked={bot.enabled}
-                            onCheckedChange={() => handleToggleBot(user.user_id, bot.id, bot.enabled)}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
                 )}
               </div>
             </CardContent>
