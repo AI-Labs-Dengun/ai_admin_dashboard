@@ -33,6 +33,7 @@ import { BotInfoModal } from "../../../components/modals/BotInfoModal";
 import { toast } from "react-hot-toast";
 import { useRouter } from "next/navigation";
 import { checkUserPermissions } from "@/app/(dashboard)/dashboard/lib/authManagement";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 
 interface Bot {
   id: string;
@@ -60,9 +61,8 @@ export default function TenantsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [hoveredBot, setHoveredBot] = useState<Bot | null>(null);
-  const [isBotInfoModalOpen, setIsBotInfoModalOpen] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const supabase = createClientComponentClient();
   const router = useRouter();
 
@@ -137,39 +137,90 @@ export default function TenantsPage() {
     }
   };
 
-  const handleCreateTenant = async () => {
+  const handleEditTenant = async (tenant: Tenant) => {
+    setEditingTenant(tenant);
+    setNewTenant({
+      name: tenant.name,
+      selectedBots: tenant.tenant_bots.map(tb => tb.bot_id)
+    });
+    setIsDialogOpen(true);
+  };
+
+  const handleCreateOrUpdateTenant = async () => {
     setIsCreating(true);
     try {
-      // Primeiro, criar o tenant
-      const { data: tenantData, error: tenantError } = await supabase
-        .from("tenants")
-        .insert([{ name: newTenant.name }])
-        .select();
+      if (editingTenant) {
+        // Atualizar tenant existente
+        const { error: tenantError } = await supabase
+          .from("tenants")
+          .update({ name: newTenant.name })
+          .eq("id", editingTenant.id);
 
-      if (tenantError) throw tenantError;
+        if (tenantError) throw tenantError;
 
-      // Depois, associar os bots selecionados
-      const tenantBotInserts = newTenant.selectedBots.map((botId) => ({
-        tenant_id: tenantData[0].id,
-        bot_id: botId,
-        enabled: true,
-      }));
+        // Remover todas as associações existentes
+        const { error: deleteError } = await supabase
+          .from("tenant_bots")
+          .delete()
+          .eq("tenant_id", editingTenant.id);
 
-      const { error: botError } = await supabase
-        .from("tenant_bots")
-        .insert(tenantBotInserts);
+        if (deleteError) throw deleteError;
 
-      if (botError) throw botError;
+        // Criar novas associações
+        const tenantBotInserts = newTenant.selectedBots.map((botId) => ({
+          tenant_id: editingTenant.id,
+          bot_id: botId,
+          enabled: true,
+        }));
 
-      // Recarregar os dados para ter a estrutura completa
+        const { error: botError } = await supabase
+          .from("tenant_bots")
+          .insert(tenantBotInserts);
+
+        if (botError) throw botError;
+
+        toast.success("Tenant atualizado com sucesso!");
+      } else {
+        // Criar novo tenant
+        const { data: tenantData, error: tenantError } = await supabase
+          .from("tenants")
+          .insert([{ name: newTenant.name }])
+          .select();
+
+        if (tenantError) throw tenantError;
+
+        const tenantBotInserts = newTenant.selectedBots.map((botId) => ({
+          tenant_id: tenantData[0].id,
+          bot_id: botId,
+          enabled: true,
+        }));
+
+        const { error: botError } = await supabase
+          .from("tenant_bots")
+          .insert(tenantBotInserts);
+
+        if (botError) throw botError;
+
+        toast.success("Tenant criado com sucesso!");
+      }
+
+      // Recarregar os dados
       await loadData();
       setNewTenant({ name: "", selectedBots: [] });
+      setEditingTenant(null);
       setIsDialogOpen(false);
     } catch (error) {
-      console.error("Erro ao criar tenant:", error);
+      console.error("Erro ao processar tenant:", error);
+      toast.error(editingTenant ? "Erro ao atualizar tenant" : "Erro ao criar tenant");
     } finally {
       setIsCreating(false);
     }
+  };
+
+  const handleCloseDialog = () => {
+    setNewTenant({ name: "", selectedBots: [] });
+    setEditingTenant(null);
+    setIsDialogOpen(false);
   };
 
   const handleDeleteTenant = async (tenantId: string) => {
@@ -206,9 +257,11 @@ export default function TenantsPage() {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Criar Novo Tenant</DialogTitle>
+                <DialogTitle>{editingTenant ? "Editar Tenant" : "Criar Novo Tenant"}</DialogTitle>
                 <DialogDescription>
-                  Preencha os dados do novo tenant e selecione os bots disponíveis.
+                  {editingTenant 
+                    ? "Atualize os dados do tenant e selecione os bots disponíveis."
+                    : "Preencha os dados do novo tenant e selecione os bots disponíveis."}
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
@@ -225,43 +278,43 @@ export default function TenantsPage() {
                 </div>
                 <div className="grid gap-2">
                   <Label>Bots Disponíveis</Label>
-                  <Select
-                    onValueChange={(value) =>
-                      setNewTenant({
-                        ...newTenant,
-                        selectedBots: [...newTenant.selectedBots, value],
-                      })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione os bots" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {bots.map((bot) => (
-                        <SelectItem 
-                          key={bot.id} 
-                          value={bot.id}
-                          onMouseEnter={() => {
-                            setHoveredBot(bot);
-                            setIsBotInfoModalOpen(true);
-                          }}
-                          onMouseLeave={() => {
-                            setHoveredBot(null);
-                            setIsBotInfoModalOpen(false);
-                          }}
-                        >
-                          {bot.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="relative">
+                    <Select
+                      onValueChange={(value) => {
+                        if (!newTenant.selectedBots.includes(value)) {
+                          setNewTenant({
+                            ...newTenant,
+                            selectedBots: [...newTenant.selectedBots, value],
+                          });
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione os bots" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {bots
+                          .filter(bot => !newTenant.selectedBots.includes(bot.id))
+                          .map((bot) => (
+                            <SelectItem 
+                              key={bot.id} 
+                              value={bot.id}
+                            >
+                              <div className="flex items-center justify-between w-full">
+                                <span>{bot.name}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   {newTenant.selectedBots.length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-2">
                       {newTenant.selectedBots.map((botId) => {
                         const bot = bots.find((b) => b.id === botId);
-                        return (
+                        return bot ? (
                           <Badge
-                            key={botId}
+                            key={`${botId}-${bot.name}`}
                             variant="secondary"
                             className="cursor-pointer"
                             onClick={() =>
@@ -272,33 +325,26 @@ export default function TenantsPage() {
                                 ),
                               })
                             }
-                            onMouseEnter={() => {
-                              if (bot) {
-                                setHoveredBot(bot);
-                                setIsBotInfoModalOpen(true);
-                              }
-                            }}
-                            onMouseLeave={() => {
-                              setHoveredBot(null);
-                              setIsBotInfoModalOpen(false);
-                            }}
                           >
-                            {bot?.name} ×
+                            {bot.name} ×
                           </Badge>
-                        );
+                        ) : null;
                       })}
                     </div>
                   )}
                 </div>
-                <Button onClick={handleCreateTenant} disabled={isCreating}>
+                <Button onClick={handleCreateOrUpdateTenant} disabled={isCreating}>
                   {isCreating ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Criando...
+                      {editingTenant ? "Atualizando..." : "Criando..."}
                     </>
                   ) : (
-                    "Criar Tenant"
+                    editingTenant ? "Atualizar Tenant" : "Criar Tenant"
                   )}
+                </Button>
+                <Button variant="outline" onClick={handleCloseDialog}>
+                  Cancelar
                 </Button>
               </div>
             </DialogContent>
@@ -336,7 +382,7 @@ export default function TenantsPage() {
                 <div className="flex justify-end space-x-2">
                   {isSuperAdmin && (
                     <>
-                      <Button variant="outline">Editar</Button>
+                      <Button variant="outline" onClick={() => handleEditTenant(tenant)}>Editar</Button>
                       <Button
                         variant="destructive"
                         onClick={() => handleDeleteTenant(tenant.id)}
@@ -351,12 +397,6 @@ export default function TenantsPage() {
           ))}
         </div>
       )}
-
-      <BotInfoModal
-        isOpen={isBotInfoModalOpen}
-        onClose={() => setIsBotInfoModalOpen(false)}
-        bot={hoveredBot}
-      />
     </div>
   );
 } 
