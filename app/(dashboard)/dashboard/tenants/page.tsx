@@ -29,19 +29,73 @@ import {
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { BotInfoModal } from "../../../components/modals/BotInfoModal";
+import { toast } from "react-hot-toast";
+import { useRouter } from "next/navigation";
+import { checkUserPermissions } from "@/app/(dashboard)/dashboard/lib/authManagement";
+
+interface Bot {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+}
+
+interface TenantBot {
+  bot_id: string;
+  enabled: boolean;
+}
+
+interface Tenant {
+  id: string;
+  name: string;
+  created_at: string;
+  tenant_bots: TenantBot[];
+}
 
 export default function TenantsPage() {
-  const [tenants, setTenants] = useState([]);
-  const [bots, setBots] = useState([]);
-  const [newTenant, setNewTenant] = useState({ name: "", selectedBots: [] });
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [bots, setBots] = useState<Bot[]>([]);
+  const [newTenant, setNewTenant] = useState({ name: "", selectedBots: [] as string[] });
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [hoveredBot, setHoveredBot] = useState<Bot | null>(null);
+  const [isBotInfoModalOpen, setIsBotInfoModalOpen] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const supabase = createClientComponentClient();
+  const router = useRouter();
 
   useEffect(() => {
-    loadData();
+    checkPermissions();
   }, []);
+
+  const checkPermissions = async () => {
+    try {
+      const permissions = await checkUserPermissions();
+      
+      if (!permissions) {
+        router.push('/auth/signin');
+        return;
+      }
+
+      setIsSuperAdmin(permissions.isSuperAdmin);
+
+      if (!permissions.isSuperAdmin) {
+        toast.error('Você não tem permissão para acessar esta página');
+        router.push('/dashboard');
+        return;
+      }
+
+      loadData();
+    } catch (error) {
+      console.error('Erro ao verificar permissões:', error);
+      toast.error('Erro ao verificar permissões');
+      router.push('/dashboard');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -50,7 +104,7 @@ export default function TenantsPage() {
           .from("tenants")
           .select(`
             *,
-            tenant_bots (
+            tenant_bots!inner (
               bot_id,
               enabled
             )
@@ -59,13 +113,25 @@ export default function TenantsPage() {
         supabase.from("bots").select("*").order("name"),
       ]);
 
-      if (tenantsResponse.error) throw tenantsResponse.error;
-      if (botsResponse.error) throw botsResponse.error;
+      if (tenantsResponse.error) {
+        console.error("Erro ao carregar tenants:", tenantsResponse.error);
+        throw new Error(tenantsResponse.error.message);
+      }
 
-      setTenants(tenantsResponse.data || []);
-      setBots(botsResponse.data || []);
+      if (botsResponse.error) {
+        console.error("Erro ao carregar bots:", botsResponse.error);
+        throw new Error(botsResponse.error.message);
+      }
+
+      if (!tenantsResponse.data || !botsResponse.data) {
+        throw new Error("Dados não encontrados");
+      }
+
+      setTenants(tenantsResponse.data);
+      setBots(botsResponse.data);
     } catch (error) {
-      console.error("Erro ao carregar dados:", error);
+      console.error("Erro ao carregar dados:", error instanceof Error ? error.message : "Erro desconhecido");
+      toast.error("Erro ao carregar dados. Por favor, tente novamente.");
     } finally {
       setIsLoading(false);
     }
@@ -106,7 +172,7 @@ export default function TenantsPage() {
     }
   };
 
-  const handleDeleteTenant = async (tenantId) => {
+  const handleDeleteTenant = async (tenantId: string) => {
     try {
       const { error } = await supabase
         .from("tenants")
@@ -133,88 +199,111 @@ export default function TenantsPage() {
     <div className="container mx-auto py-10">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">Gerenciamento de Tenants</h1>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>Criar Novo Tenant</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Criar Novo Tenant</DialogTitle>
-              <DialogDescription>
-                Preencha os dados do novo tenant e selecione os bots disponíveis.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="name">Nome do Tenant</Label>
-                <Input
-                  id="name"
-                  value={newTenant.name}
-                  onChange={(e) =>
-                    setNewTenant({ ...newTenant, name: e.target.value })
-                  }
-                  placeholder="Digite o nome do tenant"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label>Bots Disponíveis</Label>
-                <Select
-                  onValueChange={(value) =>
-                    setNewTenant({
-                      ...newTenant,
-                      selectedBots: [...newTenant.selectedBots, value],
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione os bots" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {bots.map((bot) => (
-                      <SelectItem key={bot.id} value={bot.id}>
-                        {bot.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {newTenant.selectedBots.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {newTenant.selectedBots.map((botId) => {
-                      const bot = bots.find((b) => b.id === botId);
-                      return (
-                        <Badge
-                          key={botId}
-                          variant="secondary"
-                          className="cursor-pointer"
-                          onClick={() =>
-                            setNewTenant({
-                              ...newTenant,
-                              selectedBots: newTenant.selectedBots.filter(
-                                (id) => id !== botId
-                              ),
-                            })
-                          }
+        {isSuperAdmin && (
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>Criar Novo Tenant</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Criar Novo Tenant</DialogTitle>
+                <DialogDescription>
+                  Preencha os dados do novo tenant e selecione os bots disponíveis.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="name">Nome do Tenant</Label>
+                  <Input
+                    id="name"
+                    value={newTenant.name}
+                    onChange={(e) =>
+                      setNewTenant({ ...newTenant, name: e.target.value })
+                    }
+                    placeholder="Digite o nome do tenant"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Bots Disponíveis</Label>
+                  <Select
+                    onValueChange={(value) =>
+                      setNewTenant({
+                        ...newTenant,
+                        selectedBots: [...newTenant.selectedBots, value],
+                      })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione os bots" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {bots.map((bot) => (
+                        <SelectItem 
+                          key={bot.id} 
+                          value={bot.id}
+                          onMouseEnter={() => {
+                            setHoveredBot(bot);
+                            setIsBotInfoModalOpen(true);
+                          }}
+                          onMouseLeave={() => {
+                            setHoveredBot(null);
+                            setIsBotInfoModalOpen(false);
+                          }}
                         >
-                          {bot?.name} ×
-                        </Badge>
-                      );
-                    })}
-                  </div>
-                )}
+                          {bot.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {newTenant.selectedBots.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {newTenant.selectedBots.map((botId) => {
+                        const bot = bots.find((b) => b.id === botId);
+                        return (
+                          <Badge
+                            key={botId}
+                            variant="secondary"
+                            className="cursor-pointer"
+                            onClick={() =>
+                              setNewTenant({
+                                ...newTenant,
+                                selectedBots: newTenant.selectedBots.filter(
+                                  (id) => id !== botId
+                                ),
+                              })
+                            }
+                            onMouseEnter={() => {
+                              if (bot) {
+                                setHoveredBot(bot);
+                                setIsBotInfoModalOpen(true);
+                              }
+                            }}
+                            onMouseLeave={() => {
+                              setHoveredBot(null);
+                              setIsBotInfoModalOpen(false);
+                            }}
+                          >
+                            {bot?.name} ×
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <Button onClick={handleCreateTenant} disabled={isCreating}>
+                  {isCreating ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Criando...
+                    </>
+                  ) : (
+                    "Criar Tenant"
+                  )}
+                </Button>
               </div>
-              <Button onClick={handleCreateTenant} disabled={isCreating}>
-                {isCreating ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Criando...
-                  </>
-                ) : (
-                  "Criar Tenant"
-                )}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       {tenants.length === 0 ? (
@@ -245,19 +334,29 @@ export default function TenantsPage() {
               </CardHeader>
               <CardContent>
                 <div className="flex justify-end space-x-2">
-                  <Button variant="outline">Editar</Button>
-                  <Button
-                    variant="destructive"
-                    onClick={() => handleDeleteTenant(tenant.id)}
-                  >
-                    Excluir
-                  </Button>
+                  {isSuperAdmin && (
+                    <>
+                      <Button variant="outline">Editar</Button>
+                      <Button
+                        variant="destructive"
+                        onClick={() => handleDeleteTenant(tenant.id)}
+                      >
+                        Excluir
+                      </Button>
+                    </>
+                  )}
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
+
+      <BotInfoModal
+        isOpen={isBotInfoModalOpen}
+        onClose={() => setIsBotInfoModalOpen(false)}
+        bot={hoveredBot}
+      />
     </div>
   );
 } 

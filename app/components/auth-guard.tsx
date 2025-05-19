@@ -13,19 +13,34 @@ export function AuthGuard({ children }: AuthGuardProps) {
   const router = useRouter();
   const { supabase } = useSupabase();
   const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        console.log('Verificando autenticação...');
+        const { data: { session }, error } = await supabase.auth.getSession();
         
-        if (!session) {
-          router.push('/auth/signin');
+        if (error) {
+          console.error('Erro ao verificar sessão:', error);
+          setIsAuthenticated(false);
+          router.replace('/auth/signin');
           return;
         }
+
+        if (!session) {
+          console.log('Nenhuma sessão encontrada');
+          setIsAuthenticated(false);
+          router.replace('/auth/signin');
+          return;
+        }
+
+        console.log('Sessão válida encontrada');
+        setIsAuthenticated(true);
       } catch (error) {
-        console.error('Auth check error:', error);
-        router.push('/auth/signin');
+        console.error('Erro na verificação de autenticação:', error);
+        setIsAuthenticated(false);
+        router.replace('/auth/signin');
       } finally {
         setLoading(false);
       }
@@ -33,10 +48,17 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
     checkAuth();
 
-    // Subscribe to auth changes
+    // Inscrever-se para mudanças de autenticação
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') {
-        router.push('/auth/signin');
+      console.log('Mudança no estado de autenticação:', event);
+      
+      if (event === 'SIGNED_OUT' || !session) {
+        console.log('Usuário deslogado ou sessão inválida');
+        setIsAuthenticated(false);
+        router.replace('/auth/signin');
+      } else {
+        console.log('Usuário autenticado');
+        setIsAuthenticated(true);
       }
     });
 
@@ -59,6 +81,11 @@ export function AuthGuard({ children }: AuthGuardProps) {
         </div>
       </div>
     );
+  }
+
+  if (!isAuthenticated) {
+    console.log('Usuário não autenticado, redirecionando...');
+    return null;
   }
 
   return <>{children}</>;

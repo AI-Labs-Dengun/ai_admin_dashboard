@@ -173,7 +173,18 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      is_super_admin: {
+        Args: Record<string, never>
+        Returns: boolean
+      }
+      update_updated_at_column: {
+        Args: Record<string, never>
+        Returns: unknown
+      }
+      handle_new_user: {
+        Args: Record<string, never>
+        Returns: unknown
+      }
     }
     Enums: {
       [_ in never]: never

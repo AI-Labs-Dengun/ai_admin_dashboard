@@ -3,36 +3,55 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export async function middleware(req: NextRequest) {
-  const res = NextResponse.next();
-  const supabase = createMiddlewareClient({ req, res });
+  try {
+    const res = NextResponse.next();
+    const supabase = createMiddlewareClient({ req, res });
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
-  // Se o usuário não estiver autenticado e tentar acessar uma rota protegida
-  if (!session && req.nextUrl.pathname.startsWith('/dashboard')) {
-    const redirectUrl = req.nextUrl.clone();
-    redirectUrl.pathname = '/auth/signin';
-    redirectUrl.searchParams.set(`redirectedFrom`, req.nextUrl.pathname);
-    return NextResponse.redirect(redirectUrl);
+    // Lista de rotas protegidas que requerem autenticação
+    const protectedRoutes = ['/dashboard', '/profile', '/settings'];
+    const isProtectedRoute = protectedRoutes.some(route => req.nextUrl.pathname.startsWith(route));
+
+    // Se for uma rota protegida e não houver sessão, redireciona para login
+    if (isProtectedRoute && !session) {
+      console.log('Rota protegida acessada sem sessão:', req.nextUrl.pathname);
+      const redirectUrl = new URL('/auth/signin', req.url);
+      redirectUrl.searchParams.set('redirectedFrom', req.nextUrl.pathname);
+      return NextResponse.redirect(redirectUrl);
+    }
+
+    // Se houver sessão e tentar acessar páginas de auth, redireciona para dashboard
+    if (session && req.nextUrl.pathname.startsWith('/auth')) {
+      console.log('Usuário autenticado tentando acessar página de auth:', req.nextUrl.pathname);
+      return NextResponse.redirect(new URL('/dashboard', req.url));
+    }
+
+    // Se não houver sessão e não for uma rota pública, redireciona para login
+    if (!session && !req.nextUrl.pathname.startsWith('/auth')) {
+      console.log('Rota não pública acessada sem sessão:', req.nextUrl.pathname);
+      return NextResponse.redirect(new URL('/auth/signin', req.url));
+    }
+
+    return res;
+  } catch (error) {
+    console.error('Erro no middleware:', error);
+    // Em caso de erro, redireciona para login
+    return NextResponse.redirect(new URL('/auth/signin', req.url));
   }
-
-  // Se o usuário estiver autenticado e tentar acessar páginas de auth
-  if (session && (req.nextUrl.pathname.startsWith('/auth'))) {
-    const redirectUrl = req.nextUrl.clone();
-    redirectUrl.pathname = '/dashboard';
-    return NextResponse.redirect(redirectUrl);
-  }
-
-  return res;
 }
 
 export const config = {
   matcher: [
-    '/dashboard/:path*',
-    '/auth/:path*',
-    '/profile/:path*',
-    '/settings/:path*'
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - public folder
+     */
+    '/((?!_next/static|_next/image|favicon.ico|public/).*)',
   ],
 }; 
