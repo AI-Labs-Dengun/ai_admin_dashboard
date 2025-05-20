@@ -7,21 +7,47 @@ import { Label } from "@/components/ui/label";
 import { toast } from "react-hot-toast";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface SearchUserModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectUser: (user: any) => void;
+  shouldRefresh?: boolean;
 }
 
-export function SearchUserModal({ isOpen, onClose, onSelectUser }: SearchUserModalProps) {
+export function SearchUserModal({ isOpen, onClose, onSelectUser, shouldRefresh = false }: SearchUserModalProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [users, setUsers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const supabase = createClientComponentClient();
 
+  const loadInitialUsers = async () => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('is_super_admin', false)
+        .order('full_name', { ascending: true })
+        .limit(50);
+
+      if (error) throw error;
+
+      setUsers(data || []);
+    } catch (error) {
+      console.error('Erro ao carregar usuários:', error);
+      toast.error('Erro ao carregar usuários');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const searchUsers = async () => {
-    if (!searchTerm.trim()) return;
+    if (!searchTerm.trim()) {
+      loadInitialUsers();
+      return;
+    }
 
     setIsLoading(true);
     try {
@@ -30,6 +56,7 @@ export function SearchUserModal({ isOpen, onClose, onSelectUser }: SearchUserMod
         .select('*')
         .or(`full_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,company.ilike.%${searchTerm.toLowerCase()}%`)
         .eq('is_super_admin', false)
+        .order('full_name', { ascending: true })
         .limit(10);
 
       if (error) throw error;
@@ -44,16 +71,30 @@ export function SearchUserModal({ isOpen, onClose, onSelectUser }: SearchUserMod
   };
 
   useEffect(() => {
+    if (isOpen) {
+      loadInitialUsers();
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (shouldRefresh) {
+      loadInitialUsers();
+    }
+  }, [shouldRefresh]);
+
+  useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
-      if (searchTerm.trim()) {
-        searchUsers();
-      } else {
-        setUsers([]);
-      }
+      searchUsers();
     }, 300);
 
     return () => clearTimeout(delayDebounceFn);
   }, [searchTerm]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSearchTerm("");
+    }
+  }, [isOpen]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -75,40 +116,46 @@ export function SearchUserModal({ isOpen, onClose, onSelectUser }: SearchUserMod
             />
           </div>
 
-          <div className="space-y-2 max-h-[400px] overflow-y-auto">
+          <ScrollArea className="h-[400px] rounded-md border p-4">
             {isLoading ? (
               <div className="text-center py-4">Carregando...</div>
             ) : users.length > 0 ? (
-              users.map((user) => (
-                <Card 
-                  key={user.id} 
-                  className="cursor-pointer hover:bg-accent transition-colors"
-                  onClick={() => {
-                    onSelectUser(user);
-                    onClose();
-                  }}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h3 className="font-medium">{user.full_name}</h3>
-                        <p className="text-sm text-muted-foreground">{user.email}</p>
-                        {user.company && (
-                          <Badge variant="secondary" className="mt-1">
-                            {user.company}
-                          </Badge>
-                        )}
+              <div className="space-y-2">
+                {users.map((user) => (
+                  <Card 
+                    key={user.id} 
+                    className="cursor-pointer hover:bg-accent transition-colors"
+                    onClick={() => {
+                      onSelectUser(user);
+                      onClose();
+                    }}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="font-medium">{user.full_name}</h3>
+                          <p className="text-sm text-muted-foreground">{user.email}</p>
+                          {user.company && (
+                            <Badge variant="secondary" className="mt-1">
+                              {user.company}
+                            </Badge>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
             ) : searchTerm ? (
               <div className="text-center py-4 text-muted-foreground">
                 Nenhum usuário encontrado
               </div>
-            ) : null}
-          </div>
+            ) : (
+              <div className="text-center py-4 text-muted-foreground">
+                Nenhum usuário disponível
+              </div>
+            )}
+          </ScrollArea>
         </div>
       </DialogContent>
     </Dialog>
