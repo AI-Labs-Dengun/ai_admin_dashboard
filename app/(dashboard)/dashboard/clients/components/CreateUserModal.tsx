@@ -108,6 +108,18 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
       }
 
       toast.success('Usuário criado com sucesso!');
+      
+      // Limpar o formulário
+      setNewUser({
+        email: "",
+        full_name: "",
+        company: "",
+        is_super_admin: false,
+        password: Math.random().toString(36).slice(-8),
+      });
+      setAdminPassword("");
+      setShowPasswordConfirm(false);
+      
       await onSuccess();
       onClose();
     } catch (error) {

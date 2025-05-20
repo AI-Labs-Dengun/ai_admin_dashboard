@@ -44,6 +44,7 @@ export default function AdminUsersPage() {
   const [hasChanges, setHasChanges] = useState(false);
 
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [shouldRefreshSearch, setShouldRefreshSearch] = useState(false);
 
   const router = useRouter();
   const supabase = createClientComponentClient();
@@ -302,6 +303,7 @@ export default function AdminUsersPage() {
     
     try {
       await deleteUser(userId, tenantId);
+      setShouldRefreshSearch(true);
       fetchData();
     } catch (error) {
       console.error("Erro ao excluir usuário:", error);
@@ -930,8 +932,12 @@ export default function AdminUsersPage() {
       {/* Modal de Pesquisa */}
       <SearchUserModal
         isOpen={isSearchModalOpen}
-        onClose={() => setIsSearchModalOpen(false)}
+        onClose={() => {
+          setIsSearchModalOpen(false);
+          setShouldRefreshSearch(false);
+        }}
         onSelectUser={handleSelectExistingUser}
+        shouldRefresh={shouldRefreshSearch}
       />
     </div>
   );
