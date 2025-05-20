@@ -194,7 +194,91 @@ export default function AdminUsersPage() {
 
   const handleCreateUser = async () => {
     try {
-      await createUser(newUser);
+      // Verificar se o usuário já existe
+      const { data: existingUser, error: userError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', newUser.email)
+        .single();
+
+      if (userError && userError.code !== 'PGRST116') {
+        throw userError;
+      }
+
+      let userId = existingUser?.id;
+
+      // Se o usuário não existe, criar um novo usuário no auth
+      if (!userId) {
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: newUser.email,
+          password: Math.random().toString(36).slice(-8), // Senha aleatória
+          options: {
+            data: {
+              full_name: newUser.full_name,
+              company: newUser.company,
+              is_super_admin: false
+            }
+          }
+        });
+
+        if (authError) throw authError;
+        userId = authData.user?.id;
+      }
+
+      if (!userId) {
+        throw new Error('Não foi possível obter o ID do usuário');
+      }
+
+      // Verificar se o usuário já está associado ao tenant
+      const { data: existingTenantUser, error: tenantUserError } = await supabase
+        .from('tenant_users')
+        .select('id')
+        .match({ 
+          user_id: userId, 
+          tenant_id: newUser.tenant_id 
+        })
+        .single();
+
+      if (tenantUserError && tenantUserError.code !== 'PGRST116') {
+        throw tenantUserError;
+      }
+
+      if (existingTenantUser) {
+        toast.error('Este usuário já está associado a este tenant');
+        return;
+      }
+
+      // Criar associação com o tenant
+      const { error: createError } = await supabase
+        .from('tenant_users')
+        .insert([{
+          user_id: userId,
+          tenant_id: newUser.tenant_id,
+          role: 'admin',
+          allow_bot_access: newUser.allow_bot_access,
+          token_limit: 1000000 // Limite padrão
+        }]);
+
+      if (createError) throw createError;
+
+      // Se houver bots selecionados, criar as associações
+      if (newUser.selected_bots && newUser.selected_bots.length > 0) {
+        const botInserts = newUser.selected_bots.map(botId => ({
+          user_id: userId,
+          tenant_id: newUser.tenant_id,
+          bot_id: botId,
+          enabled: newUser.allow_bot_access,
+          created_at: new Date().toISOString()
+        }));
+
+        const { error: botError } = await supabase
+          .from('user_bots')
+          .insert(botInserts);
+
+        if (botError) throw botError;
+      }
+
+      toast.success('Usuário criado/associado com sucesso!');
       setNewUser({
         email: "",
         full_name: "",
@@ -206,6 +290,7 @@ export default function AdminUsersPage() {
       fetchData();
     } catch (error) {
       console.error("Erro ao criar usuário:", error);
+      toast.error("Erro ao criar usuário");
     }
   };
 

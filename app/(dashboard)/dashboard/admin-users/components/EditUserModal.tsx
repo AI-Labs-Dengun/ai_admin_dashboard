@@ -70,25 +70,6 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
     loadUserData();
   }, [user, supabase]);
 
-  const handleToggleBot = (botId: string) => {
-    if (!editingUser) return;
-
-    setEditingUser(prev => {
-      if (!prev) return null;
-      const updatedBots = prev.bots?.map(bot => 
-        bot.id === botId 
-          ? { ...bot, enabled: !bot.enabled }
-          : bot
-      ) || [];
-      
-      return {
-        ...prev,
-        bots: updatedBots
-      };
-    });
-    setHasChanges(true);
-  };
-
   const handleToggleAllBots = () => {
     if (!editingUser) return;
 
@@ -103,6 +84,36 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
           ...bot,
           enabled: newState
         })) || []
+      };
+    });
+    setHasChanges(true);
+  };
+
+  const handleToggleBot = (botId: string) => {
+    if (!editingUser) return;
+
+    // Se o bot está sendo ativado e o allow_bot_access está false, não permitir
+    const bot = editingUser.bots?.find(b => b.id === botId);
+    if (bot && !bot.enabled && !editingUser.allow_bot_access) {
+      toast.error('É necessário ativar o acesso aos bots primeiro');
+      return;
+    }
+
+    setEditingUser(prev => {
+      if (!prev) return null;
+      const updatedBots = prev.bots?.map(bot => 
+        bot.id === botId 
+          ? { ...bot, enabled: !bot.enabled }
+          : bot
+      ) || [];
+      
+      // Se algum bot estiver ativo, ativar o allow_bot_access
+      const hasAnyEnabledBot = updatedBots.some(bot => bot.enabled);
+      
+      return {
+        ...prev,
+        allow_bot_access: hasAnyEnabledBot,
+        bots: updatedBots
       };
     });
     setHasChanges(true);
@@ -233,19 +244,45 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
     if (!editingUser || !showDeleteConfirm) return;
 
     try {
-      const { error } = await supabase
+      // Primeiro, remover todas as associações com bots do tenant
+      const { error: userBotsError } = await supabase
+        .from('user_bots')
+        .delete()
+        .match({ 
+          user_id: editingUser.user_id, 
+          tenant_id: editingUser.tenant_id 
+        });
+
+      if (userBotsError) throw userBotsError;
+
+      // Remover o uso de tokens associado ao usuário no tenant
+      const { error: tokenUsageError } = await supabase
+        .from('token_usage')
+        .delete()
+        .match({ 
+          user_id: editingUser.user_id, 
+          tenant_id: editingUser.tenant_id 
+        });
+
+      if (tokenUsageError) throw tokenUsageError;
+
+      // Por fim, remover o usuário do tenant
+      const { error: tenantUserError } = await supabase
         .from('tenant_users')
         .delete()
-        .match({ user_id: editingUser.user_id, tenant_id: editingUser.tenant_id });
+        .match({ 
+          user_id: editingUser.user_id, 
+          tenant_id: editingUser.tenant_id 
+        });
 
-      if (error) throw error;
+      if (tenantUserError) throw tenantUserError;
 
-      toast.success("Usuário excluído com sucesso!");
+      toast.success("Usuário removido do tenant com sucesso!");
       await onSave();
       onClose();
     } catch (error) {
-      console.error("Erro ao excluir usuário:", error);
-      toast.error("Erro ao excluir usuário");
+      console.error("Erro ao remover usuário do tenant:", error);
+      toast.error("Erro ao remover usuário do tenant");
     }
   };
 
