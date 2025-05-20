@@ -29,6 +29,16 @@ interface NavGroup {
 
 const navigationGroups: NavGroup[] = [
   {
+    title: "Clientes",
+    items:[
+      {
+        title: "Clientes",
+        href: "/dashboard/clients",
+        description: "Gerencie os perfis dos clientes",
+      },
+    ]
+  },
+  {
     title: "Administração",
     items: [
       {
@@ -40,11 +50,6 @@ const navigationGroups: NavGroup[] = [
         title: "Usuários Admin",
         href: "/dashboard/admin-users",
         description: "Gerencie os usuários administradores",
-      },
-      {
-        title: "Clientes",
-        href: "/dashboard/clients",
-        description: "Gerencie os perfis dos clientes",
       },
     ],
   },
