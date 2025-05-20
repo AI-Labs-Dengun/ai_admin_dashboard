@@ -379,7 +379,7 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
           <Accordion type="single" collapsible>
             <AccordionItem value="delete">
               <AccordionTrigger className="text-red-500">
-                Excluir Usuário
+                Excluir Usuário do Tenant
               </AccordionTrigger>
               <AccordionContent>
                 <div className="space-y-4">
@@ -387,7 +387,7 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
                     <AlertTriangle className="h-4 w-4" />
                     <AlertTitle>Atenção!</AlertTitle>
                     <AlertDescription>
-                      Esta ação é irreversível. Ao excluir este usuário, você perderá:
+                      Esta ação é irreversível. Ao excluir este usuário do tenant, você perderá:
                       <ul className="list-disc list-inside mt-2">
                         <li>Todas as permissões de bots</li>
                         <li>Histórico de uso de tokens</li>

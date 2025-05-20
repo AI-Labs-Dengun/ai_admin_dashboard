@@ -22,14 +22,24 @@ export interface Bot {
 }
 
 export interface TenantUser {
+  id: string;
   user_id: string;
   tenant_id: string;
   role: string;
   allow_bot_access: boolean;
-  token_limit?: number;
-  profiles: Profile;
+  token_limit: number;
+  user: {
+    email: string;
+    full_name: string;
+    company: string;
+  };
+  tenant: {
+    name: string;
+  };
+  bots: Bot[];
+  selected_bots?: string[];
   token_usage?: TokenUsage;
-  bots?: Bot[];
+  profiles: Profile;
 }
 
 export interface NewUser {
@@ -38,5 +48,6 @@ export interface NewUser {
   company: string;
   tenant_id: string;
   allow_bot_access: boolean;
-  selected_bots?: string[];
+  selected_bots: string[];
+  token_limit: number;
 } 
