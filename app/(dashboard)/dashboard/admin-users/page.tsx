@@ -27,7 +27,7 @@ interface TenantBot {
   bots: {
     id: string;
     name: string;
-  };
+  }[];
 }
 
 export default function AdminUsersPage() {
@@ -168,9 +168,9 @@ export default function AdminUsersPage() {
       const activeTenantBots = tenantBotsData?.filter(tb => tb.enabled) || [];
       
       // Mapear os bots do tenant
-      const formattedBots = (activeTenantBots as TenantBot[]).map(tb => ({
+      const formattedBots = activeTenantBots.map(tb => ({
         id: tb.bot_id,
-        name: tb.bots.name || '',
+        name: tb.bots[0]?.name || '',
         enabled: true
       }));
 
