@@ -17,7 +17,7 @@ import { toggleBotAccess, toggleBot } from "@/app/(dashboard)/dashboard/lib/botM
 import { checkUserPermissions } from "@/app/(dashboard)/dashboard/lib/authManagement";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import { EditUserModal } from "@/app/(dashboard)/dashboard/admin-users/components/EditUserModal";
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<TenantUser[]>([]);
@@ -35,6 +35,12 @@ export default function AdminUsersPage() {
   const [bots, setBots] = useState<Bot[]>([]);
   const [selectedTenant, setSelectedTenant] = useState<string>("");
   const [tenantBots, setTenantBots] = useState<Bot[]>([]);
+  const [tokenLimits, setTokenLimits] = useState<Record<string, number>>({});
+
+  const [editingUser, setEditingUser] = useState<TenantUser | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
 
   const router = useRouter();
   const supabase = createClientComponentClient();
@@ -70,7 +76,37 @@ export default function AdminUsersPage() {
   const fetchData = async () => {
     try {
       const { users: fetchedUsers, tenants: fetchedTenants } = await loadData();
-      setUsers(fetchedUsers);
+      
+      // Buscar o estado atual dos bots para cada usuário
+      const usersWithCorrectBotState = await Promise.all(
+        fetchedUsers.map(async (user) => {
+          const { data: userBots, error: userBotsError } = await supabase
+            .from("user_bots")
+            .select("bot_id, enabled")
+            .match({ 
+              user_id: user.user_id, 
+              tenant_id: user.tenant_id 
+            });
+
+          if (userBotsError) throw userBotsError;
+
+          // Criar um mapa do estado atual dos bots
+          const botStateMap = new Map(
+            userBots?.map(bot => [bot.bot_id, bot.enabled]) || []
+          );
+
+          // Atualizar o estado dos bots do usuário
+          return {
+            ...user,
+            bots: user.bots?.map(bot => ({
+              ...bot,
+              enabled: botStateMap.get(bot.id) ?? false
+            })) || []
+          };
+        })
+      );
+
+      setUsers(usersWithCorrectBotState);
       setTenants(fetchedTenants);
 
       // Buscar lista de bots
@@ -184,12 +220,196 @@ export default function AdminUsersPage() {
     }
   };
 
-  const handleToggleBotAccess = async (userId: string, tenantId: string, currentValue: boolean) => {
+  const handleToggleBotAccess = async (userId: string, tenantId: string, botId: string, currentEnabled: boolean) => {
     try {
-      await toggleBotAccess(userId, tenantId, currentValue);
-      fetchData();
+      const newEnabledState = !currentEnabled;
+      console.log('Toggle bot access:', { userId, tenantId, botId, currentEnabled, newEnabledState });
+
+      // Primeiro, verificar se existe o registro na tabela user_bots
+      const { data: existingBot, error: checkError } = await supabase
+        .from("user_bots")
+        .select("*")
+        .match({ user_id: userId, tenant_id: tenantId, bot_id: botId })
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.error('Erro ao verificar bot existente:', checkError);
+        throw checkError;
+      }
+
+      let updateError;
+      if (!existingBot) {
+        // Se não existir, criar o registro com o novo estado
+        const { error } = await supabase
+          .from("user_bots")
+          .insert([{
+            user_id: userId,
+            tenant_id: tenantId,
+            bot_id: botId,
+            enabled: newEnabledState,
+            created_at: new Date().toISOString()
+          }]);
+        updateError = error;
+      } else {
+        // Se existir, atualizar o status com o novo estado
+        const { error } = await supabase
+          .from("user_bots")
+          .update({ enabled: newEnabledState })
+          .match({ user_id: userId, tenant_id: tenantId, bot_id: botId });
+        updateError = error;
+      }
+
+      if (updateError) {
+        console.error('Erro ao atualizar estado do bot:', updateError);
+        throw updateError;
+      }
+
+      // Verificar se a atualização foi bem sucedida
+      const { data: verifyData, error: verifyError } = await supabase
+        .from("user_bots")
+        .select("enabled")
+        .match({ user_id: userId, tenant_id: tenantId, bot_id: botId })
+        .single();
+
+      if (verifyError) {
+        console.error('Erro ao verificar atualização:', verifyError);
+        throw verifyError;
+      }
+
+      if (verifyData.enabled !== newEnabledState) {
+        console.error('Estado não atualizado corretamente:', verifyData);
+        throw new Error('Estado não atualizado corretamente');
+      }
+
+      // Atualizar o estado local
+      setUsers(prevUsers => 
+        prevUsers.map(user => {
+          if (user.user_id === userId) {
+            return {
+              ...user,
+              bots: user.bots?.map(bot => 
+                bot.id === botId 
+                  ? { ...bot, enabled: newEnabledState }
+                  : bot
+              ) || []
+            };
+          }
+          return user;
+        })
+      );
+
+      toast.success(`Acesso ao bot ${newEnabledState ? 'ativado' : 'desativado'} com sucesso!`);
+      
+      // Recarregar os dados
+      await fetchData();
     } catch (error) {
-      console.error("Erro ao atualizar acesso:", error);
+      console.error("Erro ao atualizar acesso ao bot:", error);
+      toast.error("Erro ao atualizar acesso ao bot");
+      // Reverter o estado local em caso de erro
+      setUsers(prevUsers => 
+        prevUsers.map(user => {
+          if (user.user_id === userId) {
+            return {
+              ...user,
+              bots: user.bots?.map(bot => 
+                bot.id === botId 
+                  ? { ...bot, enabled: currentEnabled }
+                  : bot
+              ) || []
+            };
+          }
+          return user;
+        })
+      );
+    }
+  };
+
+  const handleToggleAllBotsAccess = async (userId: string, tenantId: string, currentEnabled: boolean) => {
+    try {
+      const newEnabledState = !currentEnabled;
+      console.log('Toggle all bots access:', { userId, tenantId, currentEnabled, newEnabledState });
+
+      // Buscar todos os bots do usuário
+      const { data: userBots, error: fetchError } = await supabase
+        .from("user_bots")
+        .select("bot_id")
+        .match({ user_id: userId, tenant_id: tenantId });
+
+      if (fetchError) {
+        console.error('Erro ao buscar bots do usuário:', fetchError);
+        throw fetchError;
+      }
+
+      if (userBots && userBots.length > 0) {
+        // Atualizar todos os bots do usuário
+        const { error: updateError } = await supabase
+          .from("user_bots")
+          .update({ enabled: newEnabledState })
+          .match({ user_id: userId, tenant_id: tenantId });
+
+        if (updateError) {
+          console.error('Erro ao atualizar todos os bots:', updateError);
+          throw updateError;
+        }
+
+        // Verificar se a atualização foi bem sucedida
+        const { data: verifyData, error: verifyError } = await supabase
+          .from("user_bots")
+          .select("enabled")
+          .match({ user_id: userId, tenant_id: tenantId });
+
+        if (verifyError) {
+          console.error('Erro ao verificar atualização:', verifyError);
+          throw verifyError;
+        }
+
+        const allUpdated = verifyData.every(bot => bot.enabled === newEnabledState);
+        if (!allUpdated) {
+          console.error('Nem todos os bots foram atualizados corretamente');
+          throw new Error('Nem todos os bots foram atualizados corretamente');
+        }
+      }
+
+      // Atualizar o estado local
+      setUsers(prevUsers => 
+        prevUsers.map(user => {
+          if (user.user_id === userId) {
+            return {
+              ...user,
+              allow_bot_access: newEnabledState,
+              bots: user.bots?.map(bot => ({
+                ...bot,
+                enabled: newEnabledState
+              })) || []
+            };
+          }
+          return user;
+        })
+      );
+
+      toast.success(`Acesso a todos os bots ${newEnabledState ? 'ativado' : 'desativado'} com sucesso!`);
+      
+      // Recarregar os dados
+      await fetchData();
+    } catch (error) {
+      console.error("Erro ao atualizar acesso aos bots:", error);
+      toast.error("Erro ao atualizar acesso aos bots");
+      // Reverter o estado local em caso de erro
+      setUsers(prevUsers => 
+        prevUsers.map(user => {
+          if (user.user_id === userId) {
+            return {
+              ...user,
+              allow_bot_access: currentEnabled,
+              bots: user.bots?.map(bot => ({
+                ...bot,
+                enabled: currentEnabled
+              })) || []
+            };
+          }
+          return user;
+        })
+      );
     }
   };
 
@@ -212,8 +432,18 @@ export default function AdminUsersPage() {
     }
   };
 
-  const handleUpdateTokenLimit = async (userId: string, tenantId: string, newLimit: number) => {
+  const handleTokenLimitChange = (userId: string, value: string) => {
+    setTokenLimits(prev => ({
+      ...prev,
+      [userId]: parseInt(value) || 0
+    }));
+  };
+
+  const handleUpdateTokenLimit = async (userId: string, tenantId: string) => {
     try {
+      const newLimit = tokenLimits[userId];
+      if (newLimit === undefined) return;
+
       await updateTokenLimit(userId, tenantId, newLimit);
       fetchData();
     } catch (error) {
@@ -221,19 +451,56 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleRemoveBotAccess = async (userId: string, tenantId: string, botId: string) => {
+    try {
+      const { error } = await supabase
+        .from("user_bots")
+        .delete()
+        .match({ user_id: userId, tenant_id: tenantId, bot_id: botId });
+
+      if (error) throw error;
+
+      toast.success("Acesso ao bot removido com sucesso!");
+      fetchData();
+    } catch (error) {
+      console.error("Erro ao remover acesso ao bot:", error);
+      toast.error("Erro ao remover acesso ao bot");
+    }
+  };
+
+  const handleRemoveAllBotAccess = async (userId: string, tenantId: string) => {
+    if (!confirm("Tem certeza que deseja remover o acesso a todos os bots deste usuário?")) return;
+
+    try {
+      const { error } = await supabase
+        .from("user_bots")
+        .delete()
+        .match({ user_id: userId, tenant_id: tenantId });
+
+      if (error) throw error;
+
+      toast.success("Acesso a todos os bots removido com sucesso!");
+      fetchData();
+    } catch (error) {
+      console.error("Erro ao remover acesso aos bots:", error);
+      toast.error("Erro ao remover acesso aos bots");
+    }
+  };
+
   const handleUpdateUserBots = async (userId: string, tenantId: string, selectedBots: string[]) => {
     try {
       // Primeiro, remover todas as associações existentes
       const { error: deleteError } = await supabase
-        .from("tenant_bots")
+        .from("user_bots")
         .delete()
-        .match({ tenant_id: tenantId, user_id: userId });
+        .match({ user_id: userId, tenant_id: tenantId });
 
       if (deleteError) throw deleteError;
 
       // Depois, criar as novas associações
       if (selectedBots.length > 0) {
         const botInserts = selectedBots.map(botId => ({
+          user_id: userId,
           tenant_id: tenantId,
           bot_id: botId,
           enabled: true,
@@ -241,7 +508,7 @@ export default function AdminUsersPage() {
         }));
 
         const { error: insertError } = await supabase
-          .from("tenant_bots")
+          .from("user_bots")
           .insert(botInserts);
 
         if (insertError) throw insertError;
@@ -255,18 +522,42 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleEditUser = async (user: TenantUser) => {
+    try {
+      // Verificar se é super_user
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('is_super_admin')
+        .eq('id', (await supabase.auth.getUser()).data.user?.id)
+        .single();
+
+      if (error) throw error;
+
+      if (!profile?.is_super_admin) {
+        toast.error('Apenas super_users podem editar permissões de bots');
+        return;
+      }
+
+      setEditingUser(user);
+      setIsEditModalOpen(true);
+    } catch (error) {
+      console.error('Erro ao verificar permissões:', error);
+      toast.error('Erro ao verificar permissões');
+    }
+  };
+
   if (loading) {
     return <div>Carregando...</div>;
   }
 
   return (
-    <div className="container mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-6">Gerenciamento de Usuários Admin</h1>
+    <div className="container mx-auto p-4 sm:p-6 md:p-8">
+      <h1 className="text-xl sm:text-2xl font-bold mb-6">Gerenciamento de Usuários Admin</h1>
 
       {/* Formulário de criação de usuário */}
-      <Card className="mb-8">
+      <Card className="mb-8 p-4 sm:p-6">
         <CardHeader>
-          <CardTitle>Criar Novo Usuário Admin</CardTitle>
+          <CardTitle className="text-lg sm:text-xl">Criar Novo Usuário Admin</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4">
@@ -336,15 +627,15 @@ export default function AdminUsersPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid gap-3">
+                  <div className="grid gap-3 max-h-[300px] overflow-y-auto pr-2">
                     {tenantBots.map((bot) => (
                       <div 
                         key={bot.id} 
-                        className={`flex items-center justify-between p-3 rounded-lg border ${
+                        className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg border ${
                           !bot.isInTenant ? 'bg-muted/50' : 'bg-card'
                         }`}
                       >
-                        <div className="flex items-center space-x-3">
+                        <div className="flex items-start sm:items-center space-x-3 min-w-0 mb-2 sm:mb-0">
                           <Checkbox
                             id={`bot-${bot.id}`}
                             checked={newUser.selected_bots?.includes(bot.id)}
@@ -355,11 +646,12 @@ export default function AdminUsersPage() {
                               setNewUser({ ...newUser, selected_bots: updatedBots });
                             }}
                             disabled={!bot.isInTenant}
+                            className="mt-1 sm:mt-0"
                           />
-                          <div className="space-y-1">
+                          <div className="space-y-1 min-w-0 flex-1">
                             <Label 
                               htmlFor={`bot-${bot.id}`} 
-                              className={`text-sm font-medium ${!bot.isInTenant ? 'text-muted-foreground' : ''}`}
+                              className={`text-sm font-medium truncate block ${!bot.isInTenant ? 'text-muted-foreground' : ''}`}
                             >
                               {bot.name}
                             </Label>
@@ -370,21 +662,19 @@ export default function AdminUsersPage() {
                             )}
                           </div>
                         </div>
-                        <div className="flex items-center space-x-3">
-                          <div className="flex items-center space-x-2">
-                            <Label 
-                              htmlFor={`enabled-${bot.id}`} 
-                              className="text-sm text-muted-foreground"
-                            >
-                              {bot.enabled ? "Ativado" : "Desativado"}
-                            </Label>
-                            <Switch
-                              id={`enabled-${bot.id}`}
-                              checked={bot.enabled}
-                              onCheckedChange={(checked) => handleToggleTenantBot(bot.id, bot.enabled)}
-                              disabled={!bot.isInTenant}
-                            />
-                          </div>
+                        <div className="flex items-center space-x-2 ml-0 sm:ml-4 flex-shrink-0">
+                          <Label 
+                            htmlFor={`enabled-${bot.id}`} 
+                            className="text-sm text-muted-foreground whitespace-nowrap"
+                          >
+                            {bot.enabled ? "Ativado" : "Desativado"}
+                          </Label>
+                          <Switch
+                            id={`enabled-${bot.id}`}
+                            checked={bot.enabled}
+                            onCheckedChange={(checked) => handleToggleTenantBot(bot.id, bot.enabled)}
+                            disabled={!bot.isInTenant}
+                          />
                         </div>
                       </div>
                     ))}
@@ -392,108 +682,86 @@ export default function AdminUsersPage() {
                 </CardContent>
               </Card>
             )}
-            <Button onClick={handleCreateUser}>Criar Usuário</Button>
+            <Button className="w-full sm:w-auto" onClick={handleCreateUser}>Criar Usuário</Button>
           </div>
         </CardContent>
       </Card>
 
       {/* Lista de usuários */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
         {users.map((user) => (
-          <Card key={`${user.user_id}-${user.tenant_id}`}>
+          <Card key={`${user.user_id}-${user.tenant_id}`} className="flex flex-col min-w-0 break-words p-4 sm:p-6">
             <CardHeader>
-              <CardTitle className="flex justify-between items-center">
-                <span>{user.profiles?.full_name || user.profiles?.email}</span>
+              <CardTitle className="flex justify-between items-center text-base sm:text-lg">
+                <span className="truncate">{user.profiles?.full_name || user.profiles?.email}</span>
                 <Button
-                  variant="destructive"
+                  variant="outline"
                   size="sm"
-                  onClick={() => handleDeleteUser(user.user_id, user.tenant_id)}
+                  onClick={() => handleEditUser(user)}
+                  className="flex-shrink-0 ml-2"
                 >
-                  Excluir
+                  Editar
                 </Button>
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
+            <CardContent className="flex-1 flex flex-col">
+              <div className="space-y-4 flex-1">
                 <div>
-                  <p className="text-sm text-gray-500">Email</p>
-                  <p>{user.profiles?.email}</p>
+                  <p className="text-xs sm:text-sm text-gray-500">Email</p>
+                  <p className="truncate">{user.profiles?.email}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Tenant</p>
-                  <p>{tenants.find(t => t.id === user.tenant_id)?.name}</p>
+                  <p className="text-xs sm:text-sm text-gray-500">Tenant</p>
+                  <p className="truncate">{tenants.find(t => t.id === user.tenant_id)?.name}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Função</p>
+                  <p className="text-xs sm:text-sm text-gray-500">Função</p>
                   <p>{user.role}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Consumo de Tokens</p>
+                  <p className="text-xs sm:text-sm text-gray-500">Consumo de Tokens</p>
                   <p>Total: {user.token_usage?.total_tokens || 0}</p>
                   <p>Último uso: {user.token_usage?.last_used ? new Date(user.token_usage.last_used).toLocaleDateString() : 'Nunca'}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Limite de Tokens</p>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      value={user.token_limit || 0}
-                      onChange={(e) => handleUpdateTokenLimit(user.user_id, user.tenant_id, parseInt(e.target.value))}
-                      className="w-32"
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleUpdateTokenLimit(user.user_id, user.tenant_id, user.token_limit || 0)}
-                    >
-                      Atualizar
-                    </Button>
-                  </div>
+                  <p className="text-xs sm:text-sm text-gray-500">Limite de Tokens</p>
+                  <p>{user.token_limit || 0} tokens</p>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Switch
                     id={`bot-access-${user.user_id}`}
                     checked={user.allow_bot_access}
-                    onCheckedChange={() => handleToggleBotAccess(user.user_id, user.tenant_id, user.allow_bot_access)}
+                    disabled
                   />
                   <Label htmlFor={`bot-access-${user.user_id}`}>Acesso aos bots</Label>
                 </div>
 
                 {/* Lista de bots associados */}
                 {user.bots && user.bots.length > 0 && (
-                  <Card className="mt-4">
+                  <Card className="mt-4 flex-1 bg-background/80">
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-lg">Bots Associados</CardTitle>
-                      <CardDescription>
-                        Gerencie os bots disponíveis para este admin
+                      <CardTitle className="text-base sm:text-lg">Bots Associados</CardTitle>
+                      <CardDescription className="text-xs sm:text-sm">
+                        Status atual dos bots disponíveis para este admin
                       </CardDescription>
                     </CardHeader>
-                    <CardContent>
-                      <div className="grid gap-3">
+                    <CardContent className="flex-1">
+                      <div className="flex flex-col gap-3 max-h-[200px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-rounded scrollbar-thumb-muted-foreground/30">
                         {user.bots.map((bot) => (
                           <div 
                             key={bot.id} 
-                            className="flex items-center justify-between p-3 rounded-lg border bg-card"
+                            className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg border w-full min-w-0 ${
+                              !bot.enabled ? 'bg-muted/50' : 'bg-card'
+                            }`}
                           >
-                            <div className="flex items-center space-x-3">
-                              <Checkbox
-                                id={`user-bot-${user.user_id}-${bot.id}`}
-                                checked={true}
-                                onCheckedChange={(checked) => {
-                                  if (!checked) {
-                                    const updatedBots = user.bots?.filter(b => b.id !== bot.id) || [];
-                                    handleUpdateUserBots(user.user_id, user.tenant_id, updatedBots.map(b => b.id));
-                                  }
-                                }}
-                              />
-                              <div className="space-y-1">
+                            <div className="flex items-start sm:items-center space-x-3 min-w-0 mb-2 sm:mb-0 w-full">
+                              <div className="space-y-1 min-w-0 flex-1">
                                 <Label 
-                                  htmlFor={`user-bot-${user.user_id}-${bot.id}`}
-                                  className="text-sm font-medium"
+                                  className={`text-sm font-medium block ${!bot.enabled ? 'text-muted-foreground' : ''}`}
                                 >
                                   {bot.name}
                                 </Label>
-                                <div className="flex items-center space-x-2">
+                                <div className="flex items-center space-x-2 flex-wrap">
                                   <Badge variant="outline" className="text-xs">
                                     {bot.token_usage?.total_tokens || 0} tokens
                                   </Badge>
@@ -503,20 +771,16 @@ export default function AdminUsersPage() {
                                 </div>
                               </div>
                             </div>
-                            <div className="flex items-center space-x-3">
-                              <div className="flex items-center space-x-2">
-                                <Label 
-                                  htmlFor={`enabled-${user.user_id}-${bot.id}`} 
-                                  className="text-sm text-muted-foreground"
-                                >
-                                  {bot.enabled ? "Ativado" : "Desativado"}
-                                </Label>
-                                <Switch
-                                  id={`enabled-${user.user_id}-${bot.id}`}
-                                  checked={bot.enabled}
-                                  onCheckedChange={() => handleToggleBot(user.user_id, bot.id, bot.enabled)}
-                                />
-                              </div>
+                            <div className="flex items-center space-x-2 ml-0 sm:ml-4 flex-shrink-0">
+                              <Label 
+                                className="text-sm text-muted-foreground whitespace-nowrap"
+                              >
+                                {bot.enabled ? "Ativado" : "Desativado"}
+                              </Label>
+                              <Switch
+                                checked={bot.enabled}
+                                disabled
+                              />
                             </div>
                           </div>
                         ))}
@@ -529,6 +793,17 @@ export default function AdminUsersPage() {
           </Card>
         ))}
       </div>
+
+      {/* Modal de Edição */}
+      <EditUserModal
+        user={editingUser}
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setEditingUser(null);
+        }}
+        onSave={fetchData}
+      />
     </div>
   );
 } 

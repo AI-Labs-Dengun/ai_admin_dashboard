@@ -23,6 +23,14 @@ interface TenantUserResponse {
       };
     }>;
   };
+  user_bots: Array<{
+    bot_id: string;
+    enabled: boolean;
+    bots: {
+      id: string;
+      name: string;
+    };
+  }>;
 }
 
 export const loadData = async () => {
@@ -51,7 +59,7 @@ export const loadData = async () => {
             email,
             full_name
           ),
-          tenant_bots (
+          user_bots!user_id (
             bot_id,
             enabled,
             bots (
@@ -98,10 +106,10 @@ export const loadData = async () => {
           total_tokens: 0,
           last_used: new Date().toISOString()
         } as TokenUsage,
-        bots: user.tenants?.tenant_bots?.map(tb => ({
-          id: tb.bot_id,
-          name: tb.bots?.name || "Bot Desconhecido",
-          enabled: tb.enabled,
+        bots: user.user_bots?.map(ub => ({
+          id: ub.bot_id,
+          name: ub.bots?.name || "Bot Desconhecido",
+          enabled: ub.enabled,
           token_usage: {
             total_tokens: 0,
             last_used: new Date().toISOString()

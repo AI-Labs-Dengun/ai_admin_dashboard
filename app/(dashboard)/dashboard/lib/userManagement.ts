@@ -102,6 +102,7 @@ export const createUser = async (newUser: NewUser) => {
         const newBotIds = newUser.selected_bots.filter(botId => !existingBotIds.includes(botId));
 
         if (newBotIds.length > 0) {
+          // Criar associações na tabela tenant_bots
           const tenantBotInserts = newBotIds.map(botId => ({
             tenant_id: newUser.tenant_id,
             bot_id: botId,
@@ -114,14 +115,30 @@ export const createUser = async (newUser: NewUser) => {
             .insert(tenantBotInserts);
 
           if (tenantBotError) {
-            console.error("Erro ao associar bots:", tenantBotError);
-            // Não vamos lançar erro aqui, pois o usuário já foi criado
-            toast.error("Usuário criado, mas houve um erro ao associar alguns bots");
+            console.error("Erro ao associar bots ao tenant:", tenantBotError);
+            toast.error("Usuário criado, mas houve um erro ao associar alguns bots ao tenant");
+          }
+
+          // Criar associações na tabela user_bots
+          const userBotInserts = newBotIds.map(botId => ({
+            user_id: authData.user.id,
+            tenant_id: newUser.tenant_id,
+            bot_id: botId,
+            enabled: true,
+            created_at: new Date().toISOString()
+          }));
+
+          const { error: userBotError } = await supabase
+            .from("user_bots")
+            .insert(userBotInserts);
+
+          if (userBotError) {
+            console.error("Erro ao associar bots ao usuário:", userBotError);
+            toast.error("Usuário criado, mas houve um erro ao associar alguns bots ao usuário");
           }
         }
       } catch (error) {
         console.error("Erro ao processar bots:", error);
-        // Não vamos lançar erro aqui, pois o usuário já foi criado
         toast.error("Usuário criado, mas houve um erro ao processar os bots");
       }
     }
