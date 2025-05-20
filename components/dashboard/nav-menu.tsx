@@ -41,6 +41,11 @@ const navigationGroups: NavGroup[] = [
         href: "/dashboard/admin-users",
         description: "Gerencie os usuários administradores",
       },
+      {
+        title: "Clientes",
+        href: "/dashboard/clients",
+        description: "Gerencie os perfis dos clientes",
+      },
     ],
   },
   {
