@@ -88,37 +88,19 @@ export function DeleteUserModal({ isOpen, onClose, onSuccess, userToDelete }: De
         return;
       }
 
-      // 1. Remover todas as associações com bots
-      const { error: userBotsError } = await supabase
-        .from('user_bots')
-        .delete()
-        .eq('user_id', userToDelete.id);
+      // Chamar a API para deletar o usuário
+      const response = await fetch('/dashboard/api/admin/delete-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId: userToDelete.id }),
+      });
 
-      if (userBotsError) throw userBotsError;
-
-      // 2. Remover uso de tokens
-      const { error: tokenUsageError } = await supabase
-        .from('token_usage')
-        .delete()
-        .eq('user_id', userToDelete.id);
-
-      if (tokenUsageError) throw tokenUsageError;
-
-      // 3. Remover associações com tenants
-      const { error: tenantUsersError } = await supabase
-        .from('tenant_users')
-        .delete()
-        .eq('user_id', userToDelete.id);
-
-      if (tenantUsersError) throw tenantUsersError;
-
-      // 4. Remover o perfil
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('id', userToDelete.id);
-
-      if (profileError) throw profileError;
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Erro ao deletar usuário');
+      }
 
       toast.success('Usuário deletado com sucesso!');
       await onSuccess();
