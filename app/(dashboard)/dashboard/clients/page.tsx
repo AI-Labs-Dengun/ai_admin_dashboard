@@ -196,6 +196,7 @@ export default function ClientsPage() {
         onClose={() => {
           setIsDeleteModalOpen(false);
           setUserToDelete(null);
+          setSearchTerm("");
         }}
         onSuccess={fetchProfiles}
         userToDelete={userToDelete}
