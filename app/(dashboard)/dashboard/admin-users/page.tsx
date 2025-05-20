@@ -18,6 +18,7 @@ import { checkUserPermissions } from "@/app/(dashboard)/dashboard/lib/authManage
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { EditUserModal } from "@/app/(dashboard)/dashboard/admin-users/components/EditUserModal";
+import { SearchUserModal } from "@/app/(dashboard)/dashboard/admin-users/components/SearchUserModal";
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<TenantUser[]>([]);
@@ -41,6 +42,8 @@ export default function AdminUsersPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
 
   const router = useRouter();
   const supabase = createClientComponentClient();
@@ -631,6 +634,15 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleSelectExistingUser = (user: any) => {
+    setNewUser({
+      ...newUser,
+      email: user.email,
+      full_name: user.full_name,
+      company: user.company,
+    });
+  };
+
   if (loading) {
     return <div>Carregando...</div>;
   }
@@ -646,6 +658,31 @@ export default function AdminUsersPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4">
+            <div className="flex gap-2 mb-4">
+              <Button
+                variant="outline"
+                onClick={() => setIsSearchModalOpen(true)}
+                className="flex-1"
+              >
+                Pesquisar Usuário Existente
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setNewUser({
+                    email: "",
+                    full_name: "",
+                    company: "",
+                    tenant_id: "",
+                    allow_bot_access: false,
+                    selected_bots: []
+                  });
+                }}
+                className="flex-1"
+              >
+                Criar Novo Usuário
+              </Button>
+            </div>
             <div className="grid gap-2">
               <Label htmlFor="full_name">Nome Completo</Label>
               <Input
@@ -888,6 +925,13 @@ export default function AdminUsersPage() {
           setEditingUser(null);
         }}
         onSave={fetchData}
+      />
+
+      {/* Modal de Pesquisa */}
+      <SearchUserModal
+        isOpen={isSearchModalOpen}
+        onClose={() => setIsSearchModalOpen(false)}
+        onSelectUser={handleSelectExistingUser}
       />
     </div>
   );
