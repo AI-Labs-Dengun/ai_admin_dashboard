@@ -92,56 +92,48 @@ export const toggleBotAccess = async (userId: string, tenantId: string, currentV
   }
 };
 
-export const toggleBot = async (tenantId: string, botId: string, currentEnabled: boolean) => {
+export const toggleBot = async (userId: string, botId: string, currentEnabled: boolean) => {
   const supabase = createClientComponentClient();
   
   try {
-    // Verificar permissões
-    const permissions = await checkUserPermissions();
-    if (!permissions?.isSuperAdmin) {
-      throw new Error("Sem permissão para atualizar status do bot");
-    }
+    const newEnabledState = !currentEnabled;
 
-    // Verificar se o bot já está associado ao tenant
-    const { data: existingBot, error: checkError } = await supabase
-      .from("tenant_bots")
-      .select("id")
-      .match({ tenant_id: tenantId, bot_id: botId })
-      .single();
+    // Atualizar apenas o estado de ativação do bot
+    const { error } = await supabase
+      .from("user_bots")
+      .update({ enabled: newEnabledState })
+      .match({ user_id: userId, bot_id: botId });
 
-    if (checkError && checkError.code !== "PGRST116") {
-      throw checkError;
-    }
+    if (error) throw error;
 
-    if (existingBot) {
-      // Se o bot já existe, atualizar o status
-      const { error: updateError } = await supabase
-        .from("tenant_bots")
-        .update({ enabled: !currentEnabled })
-        .match({ tenant_id: tenantId, bot_id: botId });
-
-      if (updateError) throw updateError;
-    } else {
-      // Se o bot não existe, criar a associação
-      const { error: insertError } = await supabase
-        .from("tenant_bots")
-        .insert([
-          {
-            tenant_id: tenantId,
-            bot_id: botId,
-            enabled: true,
-            created_at: new Date().toISOString()
-          }
-        ]);
-
-      if (insertError) throw insertError;
-    }
-
-    toast.success("Status do bot atualizado com sucesso!");
+    toast.success(`Bot ${newEnabledState ? 'ativado' : 'desativado'} com sucesso!`);
     return true;
   } catch (error) {
-    console.error("Erro ao atualizar status do bot:", error);
-    toast.error(error instanceof Error ? error.message : "Erro ao atualizar status do bot");
+    console.error("Erro ao atualizar estado do bot:", error);
+    toast.error("Erro ao atualizar estado do bot");
+    throw error;
+  }
+};
+
+export const toggleAllBots = async (userId: string, tenantId: string, currentEnabled: boolean) => {
+  const supabase = createClientComponentClient();
+  
+  try {
+    const newEnabledState = !currentEnabled;
+
+    // Atualizar apenas o estado de ativação de todos os bots do usuário
+    const { error } = await supabase
+      .from("user_bots")
+      .update({ enabled: newEnabledState })
+      .match({ user_id: userId, tenant_id: tenantId });
+
+    if (error) throw error;
+
+    toast.success(`Todos os bots ${newEnabledState ? 'ativados' : 'desativados'} com sucesso!`);
+    return true;
+  } catch (error) {
+    console.error("Erro ao atualizar estado dos bots:", error);
+    toast.error("Erro ao atualizar estado dos bots");
     throw error;
   }
 };  
