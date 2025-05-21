@@ -215,7 +215,7 @@ export default function AdminUsersPage() {
       if (!userId) {
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: newUser.email,
-          password: Math.random().toString(36).slice(-8), // Senha aleatória
+          password: Math.random().toString(36).slice(-8),
           options: {
             data: {
               full_name: newUser.full_name,
@@ -233,7 +233,7 @@ export default function AdminUsersPage() {
         throw new Error('Não foi possível obter o ID do usuário');
       }
 
-      // Verificar se o usuário já está associado ao tenant usando uma query mais simples
+      // Verificar se o usuário já está associado ao tenant
       const { count, error: countError } = await supabase
         .from('tenant_users')
         .select('*', { count: 'exact', head: true })
@@ -248,6 +248,8 @@ export default function AdminUsersPage() {
         toast.error('Este usuário já está associado a este tenant');
         return;
       }
+
+      toast.loading('Criando usuário...', { id: 'create-user' });
 
       // Criar associação com o tenant
       const { error: createError } = await supabase
@@ -279,7 +281,97 @@ export default function AdminUsersPage() {
         if (botError) throw botError;
       }
 
-      toast.success('Usuário criado/associado com sucesso!');
+      // Aguardar um tempo mais longo para garantir que as alterações foram propagadas
+      toast.loading('Finalizando criação do usuário...', { id: 'create-user' });
+      await new Promise(resolve => setTimeout(resolve, 5000));
+
+      // Verificar repetidamente se o usuário foi criado corretamente no tenant
+      let tenantUserCreated = false;
+      let retryCount = 0;
+      const maxRetries = 5;
+      
+      while (!tenantUserCreated && retryCount < maxRetries) {
+        const { data: verifyUser, error: verifyError } = await supabase
+          .from('tenant_users')
+          .select('*')
+          .match({ 
+            user_id: userId, 
+            tenant_id: newUser.tenant_id 
+          })
+          .single();
+      
+        if (!verifyError && verifyUser) {
+          tenantUserCreated = true;
+          console.log('Usuário verificado no tenant após', retryCount + 1, 'tentativas');
+        } else {
+          retryCount++;
+          console.log('Tentativa', retryCount, 'de verificar usuário no tenant falhou');
+          
+          if (retryCount < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        }
+      }
+      
+      if (!tenantUserCreated) {
+        console.warn('Não foi possível verificar o usuário no tenant após várias tentativas');
+        toast.error('Usuário criado, mas pode haver atraso na propagação dos dados');
+      }
+
+      // Gerar token inicial se o usuário tiver acesso a bots
+      if (newUser.allow_bot_access) {
+        toast.loading('Gerando token inicial...', { id: 'create-user' });
+        
+        let tokenGenerated = false;
+        let retryCount = 0;
+        const maxRetries = 4;
+        
+        while (!tokenGenerated && retryCount < maxRetries) {
+          try {
+            console.log(`Tentativa ${retryCount + 1} de gerar token para usuário ${userId} no tenant ${newUser.tenant_id}`);
+            
+            const response = await fetch('/api/bots/generate-token', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ 
+                userId, 
+                tenantId: newUser.tenant_id 
+              }),
+            });
+
+            const data = await response.json();
+            
+            if (!response.ok) {
+              throw new Error(data.error || 'Erro ao gerar token inicial');
+            }
+
+            if (data.token) {
+              await navigator.clipboard.writeText(data.token);
+              tokenGenerated = true;
+              break;
+            }
+          } catch (error) {
+            console.error(`Tentativa ${retryCount + 1} de gerar token falhou:`, error);
+            retryCount++;
+            
+            if (retryCount < maxRetries) {
+              // Aguardar um tempo crescente entre as tentativas
+              await new Promise(resolve => setTimeout(resolve, 3000 * retryCount));
+            }
+          }
+        }
+
+        if (tokenGenerated) {
+          toast.success('Token inicial gerado e copiado para a área de transferência', { id: 'create-user' });
+        } else {
+          toast.error('Usuário criado, mas houve erro ao gerar token inicial. Tente gerar o token manualmente na página de edição.', { id: 'create-user' });
+        }
+      } else {
+        toast.success('Usuário criado com sucesso!', { id: 'create-user' });
+      }
+
       setNewUser({
         email: "",
         full_name: "",
@@ -292,7 +384,7 @@ export default function AdminUsersPage() {
       fetchData();
     } catch (error) {
       console.error("Erro ao criar usuário:", error);
-      toast.error("Erro ao criar usuário");
+      toast.error(`Erro ao criar usuário: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
   };
 

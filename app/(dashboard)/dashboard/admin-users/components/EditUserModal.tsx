@@ -14,6 +14,7 @@ import { TenantUser } from "@/app/(dashboard)/dashboard/lib/types";
 import { resetUserTokens } from "@/app/(dashboard)/dashboard/lib/tokenManagement";
 import { toggleAllBots, toggleBot } from "@/app/(dashboard)/dashboard/lib/botManagement";
 import { useBotToken } from '@/app/(dashboard)/dashboard/hooks/useBotToken';
+import { cn } from "@/lib/utils";
 
 interface EditUserModalProps {
   user: TenantUser | null;
@@ -27,9 +28,11 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
   const [hasChanges, setHasChanges] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editingUser, setEditingUser] = useState<TenantUser | null>(null);
-  const [tokenLimit, setTokenLimit] = useState<number>(0);
+  const [tokenLimit, setTokenLimit] = useState<string>("");
+  const [shouldGenerateToken, setShouldGenerateToken] = useState(false);
+  const [shouldResetTokens, setShouldResetTokens] = useState(false);
   const supabase = createClientComponentClient();
-  const { generateToken, isLoading: isGeneratingToken } = useBotToken();
+  const { generateToken, isLoading: isGeneratingToken, currentToken, refreshToken } = useBotToken();
 
   useEffect(() => {
     const loadUserData = async () => {
@@ -62,17 +65,21 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
         };
 
         setEditingUser(userWithCorrectBotState);
-        setTokenLimit(user.token_limit || 0);
+        setTokenLimit(user.token_limit?.toString() || "0");
         setHasChanges(false);
         setShowDeleteConfirm(false);
+        setShouldGenerateToken(false);
+        setShouldResetTokens(false);
       } catch (error) {
         console.error("Erro ao carregar estado dos bots:", error);
         toast.error("Erro ao carregar estado dos bots");
       }
     };
 
-    loadUserData();
-  }, [user, supabase]);
+    if (isOpen) {
+      loadUserData();
+    }
+  }, [user, supabase, isOpen]);
 
   const handleToggleAllBots = async () => {
     if (!editingUser) return;
@@ -80,8 +87,7 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
     const newState = !editingUser.allow_bot_access;
     
     try {
-      await toggleAllBots(editingUser.user_id, editingUser.tenant_id, editingUser.allow_bot_access);
-      
+      // Atualizar apenas o estado local
       setEditingUser(prev => {
         if (!prev) return null;
         return {
@@ -95,8 +101,8 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
       });
       setHasChanges(true);
     } catch (error) {
-      console.error("Erro ao atualizar acesso aos bots:", error);
-      toast.error("Erro ao atualizar acesso aos bots");
+      console.error("Erro ao atualizar estado dos bots:", error);
+      toast.error("Erro ao atualizar estado dos bots");
     }
   };
 
@@ -111,8 +117,7 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
     }
 
     try {
-      await toggleBot(editingUser.user_id, botId, bot?.enabled || false);
-
+      // Atualizar apenas o estado local
       setEditingUser(prev => {
         if (!prev) return null;
         const updatedBots = prev.bots?.map(bot => 
@@ -137,13 +142,17 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
     }
   };
 
-  const handleTokenLimitChange = (value: number) => {
-    setTokenLimit(value);
+  const handleTokenLimitChange = (value: string) => {
+    // Garantir que o valor seja um número válido
+    const numericValue = value.replace(/[^0-9]/g, '');
+    setTokenLimit(numericValue);
+    
     if (editingUser) {
       setEditingUser({
         ...editingUser,
-        token_limit: value
+        token_limit: parseInt(numericValue) || 0
       });
+      setHasChanges(true);
     }
   };
 
@@ -151,16 +160,55 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
     if (!editingUser) return;
 
     try {
-      const token = await generateToken(editingUser.user_id, editingUser.tenant_id);
-      if (token) {
-        toast.success('Token gerado com sucesso');
-        // Aqui você pode implementar a lógica para exibir ou copiar o token
-        navigator.clipboard.writeText(token);
-        toast.success('Token copiado para a área de transferência');
+      toast.loading('Gerando novo token...', { id: 'generate-token' });
+      console.log('Gerando token para:', { userId: editingUser.user_id, tenantId: editingUser.tenant_id });
+
+      // Verificar se o usuário existe no tenant
+      const { data: tenantUser, error: checkError } = await supabase
+        .from('tenant_users')
+        .select('*')
+        .match({ 
+          user_id: editingUser.user_id, 
+          tenant_id: editingUser.tenant_id 
+        })
+        .single();
+
+      if (checkError) {
+        console.error('Erro ao verificar usuário no tenant:', checkError);
+        throw new Error('Erro ao verificar usuário no tenant');
       }
+
+      // Verificar se há bots habilitados
+      const { data: userBots, error: botError } = await supabase
+        .from('user_bots')
+        .select('bot_id, enabled')
+        .match({ 
+          user_id: editingUser.user_id, 
+          tenant_id: editingUser.tenant_id 
+        })
+        .eq('enabled', true);
+
+      if (botError) {
+        console.error('Erro ao verificar bots do usuário:', botError);
+        throw new Error('Erro ao verificar bots do usuário');
+      }
+
+      if (!userBots || userBots.length === 0) {
+        throw new Error('Nenhum bot habilitado para o usuário');
+      }
+
+      // Gerar o token
+      const token = await generateToken(editingUser.user_id, editingUser.tenant_id);
+      if (!token) {
+        throw new Error('Falha ao gerar token');
+      }
+
+      // Copiar o token para o clipboard
+      await navigator.clipboard.writeText(token);
+      toast.success('Token gerado e copiado para a área de transferência', { id: 'generate-token' });
     } catch (error) {
       console.error('Erro ao gerar token:', error);
-      toast.error('Erro ao gerar token');
+      toast.error(error instanceof Error ? error.message : 'Erro ao gerar token', { id: 'generate-token' });
     }
   };
 
@@ -183,27 +231,29 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
         return;
       }
 
-      // Atualizar limite de tokens
-      if (tokenLimit !== editingUser.token_limit) {
-        const { error: tokenError } = await supabase
-          .from('tenant_users')
-          .update({ token_limit: tokenLimit })
-          .match({ user_id: editingUser.user_id, tenant_id: editingUser.tenant_id });
+      toast.loading('Salvando alterações...', { id: 'save-changes' });
 
-        if (tokenError) throw tokenError;
+      // 1. Atualizar dados do usuário no tenant_users
+      console.log('1. Atualizando dados do usuário...');
+      const { error: updateError } = await supabase
+        .from('tenant_users')
+        .update({ 
+          token_limit: parseInt(tokenLimit) || 0,
+          allow_bot_access: editingUser.allow_bot_access 
+        })
+        .match({ 
+          user_id: editingUser.user_id, 
+          tenant_id: editingUser.tenant_id 
+        });
+
+      if (updateError) {
+        console.error('Erro ao atualizar dados do usuário:', updateError);
+        throw updateError;
       }
 
-      // Atualizar allow_bot_access no tenant_users
-      const { error: tenantUserError } = await supabase
-        .from('tenant_users')
-        .update({ allow_bot_access: editingUser.allow_bot_access })
-        .match({ user_id: editingUser.user_id, tenant_id: editingUser.tenant_id });
-
-      if (tenantUserError) throw tenantUserError;
-
-      // Processar cada bot individualmente
+      // 2. Atualizar permissões dos bots
+      console.log('2. Atualizando permissões dos bots...');
       for (const bot of (editingUser.bots || [])) {
-        // Verificar se existe o registro na tabela user_bots
         const { data: existingBot, error: checkError } = await supabase
           .from("user_bots")
           .select("*")
@@ -219,7 +269,6 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
         }
 
         if (!existingBot) {
-          // Criar novo registro se não existir
           const { error: insertError } = await supabase
             .from("user_bots")
             .insert([{
@@ -232,7 +281,6 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
 
           if (insertError) throw insertError;
         } else {
-          // Atualizar apenas se o estado mudou
           const { error: updateError } = await supabase
             .from("user_bots")
             .update({ enabled: bot.enabled })
@@ -246,32 +294,45 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
         }
       }
 
-      // Verificar se todas as atualizações foram bem sucedidas
-      const { data: verifyData, error: verifyError } = await supabase
-        .from("user_bots")
-        .select("enabled, bot_id")
-        .match({ 
-          user_id: editingUser.user_id, 
-          tenant_id: editingUser.tenant_id 
-        });
-
-      if (verifyError) throw verifyError;
-
-      const allUpdated = verifyData.every(bot => {
-        const expectedState = editingUser.bots?.find(b => b.id === bot.bot_id)?.enabled;
-        return bot.enabled === expectedState;
-      });
-
-      if (!allUpdated) {
-        throw new Error('Nem todos os bots foram atualizados corretamente');
+      // 3. Resetar tokens (se selecionado)
+      if (shouldResetTokens) {
+        console.log('3. Resetando tokens...');
+        try {
+          await resetUserTokens(editingUser.user_id, editingUser.tenant_id);
+          toast.success('Tokens resetados com sucesso!', { id: 'save-changes' });
+        } catch (resetError) {
+          console.error('Erro ao resetar tokens:', resetError);
+          toast.error(`Erro ao resetar tokens: ${resetError instanceof Error ? resetError.message : 'Erro desconhecido'}`, { id: 'save-changes' });
+        }
       }
 
-      toast.success("Alterações salvas com sucesso!");
+      // 4. Gerar novo token (se selecionado) - sempre por último
+      if (shouldGenerateToken) {
+        console.log('4. Gerando novo token...');
+        try {
+          // Aguardar um momento para garantir que todas as alterações foram propagadas
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          const token = await generateToken(editingUser.user_id, editingUser.tenant_id);
+          if (token) {
+            await navigator.clipboard.writeText(token);
+            toast.success('Alterações salvas e novo token gerado com sucesso!', { id: 'save-changes' });
+          } else {
+            toast.error('Alterações salvas, mas houve erro ao gerar novo token', { id: 'save-changes' });
+          }
+        } catch (tokenError) {
+          console.error('Erro ao gerar token:', tokenError);
+          toast.error(`Alterações salvas, mas houve erro ao gerar novo token: ${tokenError instanceof Error ? tokenError.message : 'Erro desconhecido'}`, { id: 'save-changes' });
+        }
+      } else {
+        toast.success('Alterações salvas com sucesso!', { id: 'save-changes' });
+      }
+
       await onSave();
       onClose();
     } catch (error) {
       console.error("Erro ao salvar alterações:", error);
-      toast.error("Erro ao salvar alterações");
+      toast.error(`Erro ao salvar alterações: ${error instanceof Error ? error.message : 'Erro desconhecido'}`, { id: 'save-changes' });
     } finally {
       setIsSaving(false);
     }
@@ -360,28 +421,60 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
               <div className="flex-1">
                 <Label>Limite de Tokens</Label>
                 <Input
-                  type="number"
-                  value={editingUser.token_limit}
-                  onChange={(e) => handleTokenLimitChange(parseInt(e.target.value))}
+                  type="text"
+                  value={tokenLimit}
+                  onChange={(e) => handleTokenLimitChange(e.target.value)}
                   min={0}
                 />
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleGenerateToken}
-                disabled={isGeneratingToken}
-              >
-                {isGeneratingToken ? 'Gerando...' : 'Gerar Token'}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => resetUserTokens(editingUser.user_id, editingUser.tenant_id)}
-              >
-                Resetar Tokens
-              </Button>
+              <div className="flex flex-col gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShouldGenerateToken(!shouldGenerateToken)}
+                  className={cn(
+                    "transition-colors",
+                    shouldGenerateToken && "border-blue-500 bg-blue-50 dark:bg-blue-950"
+                  )}
+                >
+                  {isGeneratingToken ? 'Gerando...' : 'Gerar Novo Token'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShouldResetTokens(!shouldResetTokens)}
+                  className={cn(
+                    "transition-colors",
+                    shouldResetTokens && "border-blue-500 bg-blue-50 dark:bg-blue-950"
+                  )}
+                >
+                  Resetar Tokens
+                </Button>
+              </div>
             </div>
+            {currentToken && (
+              <div className="mt-2 p-2 bg-muted rounded-md">
+                <p className="text-sm text-muted-foreground mb-1">Token JWT Atual:</p>
+                <div className="flex items-center gap-2">
+                  <code className="text-xs bg-background p-2 rounded flex-1 overflow-x-auto">
+                    {currentToken}
+                  </code>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(currentToken);
+                      toast.success('Token copiado para a área de transferência');
+                    }}
+                  >
+                    Copiar
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Este token expira em 10 minutos e será renovado automaticamente apenas após expiração. O histórico de consumo é mantido.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Acesso aos Bots */}

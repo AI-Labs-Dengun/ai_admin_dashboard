@@ -2,6 +2,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { NewUser } from "./types";
 import toast from "react-hot-toast";
 import { checkUserPermissions } from "./authManagement";
+import { generateBotToken } from './jwtManagement';
 
 export const createUser = async (newUser: NewUser) => {
   const supabase = createClientComponentClient();
@@ -143,8 +144,11 @@ export const createUser = async (newUser: NewUser) => {
       }
     }
 
+    // Gerar token JWT automaticamente
+    const token = await generateBotToken(authData.user.id, newUser.tenant_id);
+    
     toast.success("Usuário criado com sucesso!");
-    return true;
+    return { userId: authData.user.id, token };
   } catch (error) {
     console.error("Erro ao criar usuário:", error);
     toast.error(error instanceof Error ? error.message : "Erro ao criar usuário");
