@@ -11,6 +11,9 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertTriangle } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { TenantUser } from "@/app/(dashboard)/dashboard/lib/types";
+import { resetUserTokens } from "@/app/(dashboard)/dashboard/lib/tokenManagement";
+import { toggleAllBots, toggleBot } from "@/app/(dashboard)/dashboard/lib/botManagement";
+import { useBotToken } from '@/app/(dashboard)/dashboard/hooks/useBotToken';
 
 interface EditUserModalProps {
   user: TenantUser | null;
@@ -26,6 +29,7 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
   const [editingUser, setEditingUser] = useState<TenantUser | null>(null);
   const [tokenLimit, setTokenLimit] = useState<number>(0);
   const supabase = createClientComponentClient();
+  const { generateToken, isLoading: isGeneratingToken } = useBotToken();
 
   useEffect(() => {
     const loadUserData = async () => {
@@ -70,26 +74,33 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
     loadUserData();
   }, [user, supabase]);
 
-  const handleToggleAllBots = () => {
+  const handleToggleAllBots = async () => {
     if (!editingUser) return;
 
     const newState = !editingUser.allow_bot_access;
     
-    setEditingUser(prev => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        allow_bot_access: newState,
-        bots: prev.bots?.map(bot => ({
-          ...bot,
-          enabled: newState
-        })) || []
-      };
-    });
-    setHasChanges(true);
+    try {
+      await toggleAllBots(editingUser.user_id, editingUser.tenant_id, editingUser.allow_bot_access);
+      
+      setEditingUser(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          allow_bot_access: newState,
+          bots: prev.bots?.map(bot => ({
+            ...bot,
+            enabled: newState
+          })) || []
+        };
+      });
+      setHasChanges(true);
+    } catch (error) {
+      console.error("Erro ao atualizar acesso aos bots:", error);
+      toast.error("Erro ao atualizar acesso aos bots");
+    }
   };
 
-  const handleToggleBot = (botId: string) => {
+  const handleToggleBot = async (botId: string) => {
     if (!editingUser) return;
 
     // Se o bot está sendo ativado e o allow_bot_access está false, não permitir
@@ -99,31 +110,57 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
       return;
     }
 
-    setEditingUser(prev => {
-      if (!prev) return null;
-      const updatedBots = prev.bots?.map(bot => 
-        bot.id === botId 
-          ? { ...bot, enabled: !bot.enabled }
-          : bot
-      ) || [];
-      
-      // Se algum bot estiver ativo, ativar o allow_bot_access
-      const hasAnyEnabledBot = updatedBots.some(bot => bot.enabled);
-      
-      return {
-        ...prev,
-        allow_bot_access: hasAnyEnabledBot,
-        bots: updatedBots
-      };
-    });
-    setHasChanges(true);
+    try {
+      await toggleBot(editingUser.user_id, botId, bot?.enabled || false);
+
+      setEditingUser(prev => {
+        if (!prev) return null;
+        const updatedBots = prev.bots?.map(bot => 
+          bot.id === botId 
+            ? { ...bot, enabled: !bot.enabled }
+            : bot
+        ) || [];
+        
+        // Se algum bot estiver ativo, ativar o allow_bot_access
+        const hasAnyEnabledBot = updatedBots.some(bot => bot.enabled);
+        
+        return {
+          ...prev,
+          allow_bot_access: hasAnyEnabledBot,
+          bots: updatedBots
+        };
+      });
+      setHasChanges(true);
+    } catch (error) {
+      console.error("Erro ao atualizar estado do bot:", error);
+      toast.error("Erro ao atualizar estado do bot");
+    }
   };
 
-  const handleTokenLimitChange = (value: string) => {
-    const newLimit = parseInt(value) || 0;
-    setTokenLimit(newLimit);
-    if (editingUser && newLimit !== editingUser.token_limit) {
-      setHasChanges(true);
+  const handleTokenLimitChange = (value: number) => {
+    setTokenLimit(value);
+    if (editingUser) {
+      setEditingUser({
+        ...editingUser,
+        token_limit: value
+      });
+    }
+  };
+
+  const handleGenerateToken = async () => {
+    if (!editingUser) return;
+
+    try {
+      const token = await generateToken(editingUser.user_id, editingUser.tenant_id);
+      if (token) {
+        toast.success('Token gerado com sucesso');
+        // Aqui você pode implementar a lógica para exibir ou copiar o token
+        navigator.clipboard.writeText(token);
+        toast.success('Token copiado para a área de transferência');
+      }
+    } catch (error) {
+      console.error('Erro ao gerar token:', error);
+      toast.error('Erro ao gerar token');
     }
   };
 
@@ -319,14 +356,31 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
           {/* Limite de Tokens */}
           <div className="space-y-2">
             <h3 className="text-lg font-medium">Limite de Tokens</h3>
-            <div className="flex items-center space-x-2">
-              <Input
-                type="number"
-                value={tokenLimit}
-                onChange={(e) => handleTokenLimitChange(e.target.value)}
-                className="w-32"
-              />
-              <Label>tokens</Label>
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <Label>Limite de Tokens</Label>
+                <Input
+                  type="number"
+                  value={editingUser.token_limit}
+                  onChange={(e) => handleTokenLimitChange(parseInt(e.target.value))}
+                  min={0}
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleGenerateToken}
+                disabled={isGeneratingToken}
+              >
+                {isGeneratingToken ? 'Gerando...' : 'Gerar Token'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => resetUserTokens(editingUser.user_id, editingUser.tenant_id)}
+              >
+                Resetar Tokens
+              </Button>
             </div>
           </div>
 
@@ -354,10 +408,27 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
                       <Label className="text-sm font-medium">
                         {bot.name}
                       </Label>
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-2 flex-wrap">
                         <Badge variant="outline" className="text-xs">
                           {bot.token_usage?.total_tokens || 0} tokens
                         </Badge>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={async () => {
+                            if (!editingUser) return;
+                            if (!confirm(`Tem certeza que deseja resetar os tokens do bot ${bot.name}?`)) return;
+                            
+                            try {
+                              await resetUserTokens(editingUser.user_id, editingUser.tenant_id, bot.id);
+                              await onSave();
+                            } catch (error) {
+                              console.error("Erro ao resetar tokens do bot:", error);
+                            }
+                          }}
+                        >
+                          Resetar
+                        </Button>
                       </div>
                     </div>
                   </div>
