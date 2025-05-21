@@ -50,6 +50,15 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
 
         if (userBotsError) throw userBotsError;
 
+        // Buscar informações do perfil do usuário
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("full_name, email, company")
+          .eq("id", user.user_id)
+          .single();
+
+        if (profileError) throw profileError;
+
         // Criar um mapa do estado atual dos bots
         const botStateMap = new Map(
           userBots?.map(bot => [bot.bot_id, bot.enabled]) || []
@@ -58,6 +67,12 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
         // Atualizar o estado do usuário com os dados corretos da base
         const userWithCorrectBotState = {
           ...user,
+          profiles: {
+            ...user.profiles,
+            full_name: profile.full_name,
+            email: profile.email,
+            company: profile.company
+          },
           bots: user.bots?.map(bot => ({
             ...bot,
             enabled: botStateMap.get(bot.id) ?? false
@@ -71,8 +86,8 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
         setShouldGenerateToken(false);
         setShouldResetTokens(false);
       } catch (error) {
-        console.error("Erro ao carregar estado dos bots:", error);
-        toast.error("Erro ao carregar estado dos bots");
+        console.error("Erro ao carregar dados do usuário:", error);
+        toast.error("Erro ao carregar dados do usuário");
       }
     };
 
@@ -412,6 +427,7 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
             <h3 className="text-lg font-medium">Informações do Usuário</h3>
             <p>Nome: {editingUser.profiles?.full_name}</p>
             <p>Email: {editingUser.profiles?.email}</p>
+            <p>Empresa: {editingUser.profiles?.company}</p>
           </div>
 
           {/* Limite de Tokens */}

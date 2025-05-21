@@ -6,6 +6,7 @@ export interface Tenant {
 export interface Profile {
   email: string;
   full_name: string;
+  company: string;
 }
 
 export interface TokenUsage {
