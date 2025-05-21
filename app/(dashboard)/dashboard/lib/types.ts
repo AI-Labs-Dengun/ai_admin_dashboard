@@ -17,7 +17,8 @@ export interface TokenUsage {
 export interface Bot {
   id: string;
   name: string;
-  enabled: boolean;
+  description?: string;
+  enabled?: boolean;
   token_usage?: TokenUsage;
   isInTenant?: boolean;
 }

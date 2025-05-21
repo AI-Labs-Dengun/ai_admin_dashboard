@@ -152,9 +152,10 @@ export default function AdminUsersPage() {
         .select(`
           bot_id,
           enabled,
-          bots (
+          bots!inner (
             id,
-            name
+            name,
+            description
           )
         `)
         .eq("tenant_id", tenantId);
@@ -170,9 +171,12 @@ export default function AdminUsersPage() {
       // Mapear os bots do tenant
       const formattedBots = activeTenantBots.map(tb => ({
         id: tb.bot_id,
-        name: tb.bots[0]?.name || '',
+        name: tb.bots.name || '',
+        description: tb.bots.description || '',
         enabled: true
       }));
+
+      console.log('Bots do tenant:', formattedBots); // Log para debug
 
       setTenantBots(formattedBots);
       
@@ -942,6 +946,9 @@ export default function AdminUsersPage() {
                                 >
                                   {bot.name}
                                 </Label>
+                                <p className="text-xs text-muted-foreground">
+                                  {bot.description || 'Sem descrição'}
+                                </p>
                               </div>
                             </div>
                           </div>
