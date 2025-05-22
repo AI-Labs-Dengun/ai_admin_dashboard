@@ -24,7 +24,6 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
     full_name: "",
     company: "",
     is_super_admin: false,
-    password: Math.random().toString(36).slice(-8), // Senha aleatória
   });
 
   const supabase = createClientComponentClient();
@@ -88,26 +87,32 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
         return;
       }
 
-      // Criar o usuário no auth
+      // Criar o usuário no auth com senha temporária
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: newUser.email,
-        password: newUser.password,
+        password: Math.random().toString(36).slice(-8), // Senha temporária
         options: {
           data: {
             full_name: newUser.full_name,
             company: newUser.company,
-            is_super_admin: newUser.is_super_admin
-          }
+            is_super_admin: newUser.is_super_admin,
+            needs_password_setup: true // Flag para indicar que precisa definir senha
+          },
+          emailRedirectTo: `${window.location.origin}/auth/setup-password`
         }
       });
 
-      if (authError) throw authError;
+      if (authError) {
+        console.error('Erro ao criar usuário:', authError);
+        toast.error('Erro ao criar usuário. Tente novamente.');
+        return;
+      }
 
       if (!authData.user) {
         throw new Error('Não foi possível criar o usuário');
       }
 
-      toast.success('Usuário criado com sucesso!');
+      toast.success('Usuário criado com sucesso! Um email foi enviado para definir a senha.');
       
       // Limpar o formulário
       setNewUser({
@@ -115,7 +120,6 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
         full_name: "",
         company: "",
         is_super_admin: false,
-        password: Math.random().toString(36).slice(-8),
       });
       setAdminPassword("");
       setShowPasswordConfirm(false);
@@ -136,7 +140,7 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
         <DialogHeader>
           <DialogTitle>Criar Novo Usuário</DialogTitle>
           <DialogDescription>
-            Preencha os dados para criar um novo usuário no sistema.
+            Preencha os dados para criar um novo usuário no sistema. Um email será enviado para definir a senha.
           </DialogDescription>
         </DialogHeader>
 
