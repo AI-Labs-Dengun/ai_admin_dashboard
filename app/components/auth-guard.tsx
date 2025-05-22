@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useSupabase } from '@/app/providers/supabase-provider';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -11,6 +11,7 @@ interface AuthGuardProps {
 
 export function AuthGuard({ children }: AuthGuardProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const { supabase } = useSupabase();
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -24,14 +25,26 @@ export function AuthGuard({ children }: AuthGuardProps) {
         if (error) {
           console.error('Erro ao verificar sessão:', error);
           setIsAuthenticated(false);
-          router.replace('/auth/signin');
+          if (pathname !== '/auth/setup-password') {
+            router.replace('/auth/signin');
+          }
           return;
         }
 
         if (!session) {
           console.log('Nenhuma sessão encontrada');
           setIsAuthenticated(false);
-          router.replace('/auth/signin');
+          if (pathname !== '/auth/setup-password') {
+            router.replace('/auth/signin');
+          }
+          return;
+        }
+
+        // Verificar se o usuário precisa definir a senha
+        const needsPasswordSetup = session.user.user_metadata?.needs_password_setup;
+        if (needsPasswordSetup && pathname !== '/auth/setup-password') {
+          console.log('Usuário precisa definir senha');
+          router.replace('/auth/setup-password');
           return;
         }
 
@@ -40,7 +53,9 @@ export function AuthGuard({ children }: AuthGuardProps) {
       } catch (error) {
         console.error('Erro na verificação de autenticação:', error);
         setIsAuthenticated(false);
-        router.replace('/auth/signin');
+        if (pathname !== '/auth/setup-password') {
+          router.replace('/auth/signin');
+        }
       } finally {
         setLoading(false);
       }
@@ -55,8 +70,18 @@ export function AuthGuard({ children }: AuthGuardProps) {
       if (event === 'SIGNED_OUT' || !session) {
         console.log('Usuário deslogado ou sessão inválida');
         setIsAuthenticated(false);
-        router.replace('/auth/signin');
+        if (pathname !== '/auth/setup-password') {
+          router.replace('/auth/signin');
+        }
       } else {
+        // Verificar se o usuário precisa definir a senha
+        const needsPasswordSetup = session.user.user_metadata?.needs_password_setup;
+        if (needsPasswordSetup && pathname !== '/auth/setup-password') {
+          console.log('Usuário precisa definir senha');
+          router.replace('/auth/setup-password');
+          return;
+        }
+        
         console.log('Usuário autenticado');
         setIsAuthenticated(true);
       }
@@ -65,7 +90,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
     return () => {
       subscription.unsubscribe();
     };
-  }, [router, supabase]);
+  }, [router, supabase, pathname]);
 
   if (loading) {
     return (
@@ -83,7 +108,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
     );
   }
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated && pathname !== '/auth/setup-password') {
     console.log('Usuário não autenticado, redirecionando...');
     return null;
   }
