@@ -10,7 +10,17 @@ export async function GET(request: Request) {
     if (code) {
       const cookieStore = cookies();
       const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
-      await supabase.auth.exchangeCodeForSession(code);
+      const { data: { session }, error } = await supabase.auth.exchangeCodeForSession(code);
+
+      if (error) {
+        console.error('Erro ao trocar código por sessão:', error);
+        return NextResponse.redirect(new URL('/auth/signin', request.url));
+      }
+
+      // Verificar se o usuário precisa definir a senha
+      if (session?.user?.user_metadata?.needs_password_setup) {
+        return NextResponse.redirect(new URL('/auth/setup-password', requestUrl.origin));
+      }
     }
 
     // URL to redirect to after sign in process completes
