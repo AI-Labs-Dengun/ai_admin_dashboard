@@ -1,0 +1,43 @@
+{
+  "name": "dengun_ai-admin-client",
+  "version": "1.0.0",
+  "description": "Cliente para integração com o AI Admin Dashboard",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "lint": "eslint src --ext .ts",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "ai",
+    "admin",
+    "dashboard",
+    "bot",
+    "integration"
+  ],
+  "author": "Dengun",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.6.7",
+    "jose": "^5.2.2",
+    "semver": "^7.5.4"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^20.11.19",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "eslint": "^8.56.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "typescript": "^5.3.3"
+  },
+  "peerDependencies": {
+    "typescript": ">=4.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
