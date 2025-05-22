@@ -172,9 +172,10 @@ export default function AdminUsersPage() {
       const formattedBots = activeTenantBots.map(tb => ({
         id: tb.bot_id,
         name: tb.bots.name || '',
-        description: tb.bots.description || '',
+        description: tb.bots.description || '', //Erro já conhecido, po
         enabled: true
       }));
+
 
       console.log('Bots do tenant:', formattedBots); // Log para debug
 

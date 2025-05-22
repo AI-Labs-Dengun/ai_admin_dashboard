@@ -183,7 +183,7 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
 
           {showPasswordConfirm && (
             <>
-              <Alert variant="warning" className="mt-2">
+              <Alert variant="destructive" className="mt-2">
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
                   Para criar um Super Admin, confirme sua senha atual.
