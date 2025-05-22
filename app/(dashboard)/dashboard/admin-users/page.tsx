@@ -326,50 +326,45 @@ export default function AdminUsersPage() {
       if (newUser.allow_bot_access) {
         toast.loading('Gerando token inicial...', { id: 'create-user' });
         
-        let tokenGenerated = false;
-        let retryCount = 0;
-        const maxRetries = 4;
-        
-        while (!tokenGenerated && retryCount < maxRetries) {
-          try {
-            console.log(`Tentativa ${retryCount + 1} de gerar token para usuário ${userId} no tenant ${newUser.tenant_id}`);
-            
-            const response = await fetch('/api/bots/generate-token', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ 
-                userId, 
-                tenantId: newUser.tenant_id 
-              }),
-            });
+        try {
+          // Aguardar um momento para garantir que o usuário foi criado corretamente
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          console.log(`Gerando token para usuário ${userId} no tenant ${newUser.tenant_id}`);
+          
+          const response = await fetch('/api/bots/generate-token', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+              userId, 
+              tenantId: newUser.tenant_id 
+            }),
+          });
 
-            const data = await response.json();
-            
-            if (!response.ok) {
-              throw new Error(data.error || 'Erro ao gerar token inicial');
-            }
-
-            if (data.token) {
-              await navigator.clipboard.writeText(data.token);
-              tokenGenerated = true;
-              break;
-            }
-          } catch (error) {
-            console.error(`Tentativa ${retryCount + 1} de gerar token falhou:`, error);
-            retryCount++;
-            
-            if (retryCount < maxRetries) {
-              // Aguardar um tempo crescente entre as tentativas
-              await new Promise(resolve => setTimeout(resolve, 3000 * retryCount));
-            }
+          const data = await response.json();
+          
+          if (!response.ok) {
+            throw new Error(data.error || 'Erro ao gerar token inicial');
           }
-        }
 
-        if (tokenGenerated) {
-          toast.success('Token inicial gerado e copiado para a área de transferência', { id: 'create-user' });
-        } else {
+          if (data.token) {
+            // Aguardar um momento para garantir que o documento está focado
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            try {
+              await navigator.clipboard.writeText(data.token);
+              toast.success('Token inicial gerado e copiado para a área de transferência', { id: 'create-user' });
+            } catch (clipboardError) {
+              console.warn('Não foi possível copiar o token para a área de transferência:', clipboardError);
+              toast.success('Token inicial gerado com sucesso!', { id: 'create-user' });
+            }
+          } else {
+            throw new Error('Token não gerado');
+          }
+        } catch (error) {
+          console.error('Erro ao gerar token inicial:', error);
           toast.error('Usuário criado, mas houve erro ao gerar token inicial. Tente gerar o token manualmente na página de edição.', { id: 'create-user' });
         }
       } else {
