@@ -1,5 +1,6 @@
 import { createBotConnection } from '../index';
 import axios from 'axios';
+import '@types/jest';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
