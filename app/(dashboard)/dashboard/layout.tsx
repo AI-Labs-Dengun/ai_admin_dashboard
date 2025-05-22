@@ -1,5 +1,3 @@
-import { BotNotifications } from "@/app/components/BotNotifications";
-
 export default function DashboardLayout({
   children,
 }: {
@@ -12,7 +10,6 @@ export default function DashboardLayout({
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold">Dashboard</h1>
             <div className="flex items-center gap-4">
-              <BotNotifications />
             </div>
           </div>
         </div>

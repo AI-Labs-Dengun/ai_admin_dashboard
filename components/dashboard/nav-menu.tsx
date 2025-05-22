@@ -2,8 +2,8 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
-
+import { usePathname, useRouter } from "next/navigation"
+import { useSupabase } from "@/app/providers/supabase-provider"
 import {
   NavigationMenu,
   NavigationMenuContent,
@@ -13,8 +13,8 @@ import {
   NavigationMenuTrigger,
   navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu"
-
 import { cn } from "@/lib/utils"
+import { toast } from "react-hot-toast"
 
 interface NavItem {
   title: string
@@ -67,6 +67,39 @@ const navigationGroups: NavGroup[] = [
 
 export function NavMenu() {
   const pathname = usePathname()
+  const router = useRouter()
+  const { supabase } = useSupabase()
+  const [isSuperAdmin, setIsSuperAdmin] = React.useState(false)
+
+  React.useEffect(() => {
+    checkSuperAdmin()
+  }, [])
+
+  const checkSuperAdmin = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      router.push('/auth/signin')
+      return
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("is_super_admin")
+      .eq("id", session.user.id)
+      .single()
+
+    setIsSuperAdmin(profile?.is_super_admin || false)
+  }
+
+  const handleNavigation = (href: string) => {
+    if (!isSuperAdmin) {
+      toast.error("Acesso restrito a super administradores")
+      return
+    }
+    router.push(href)
+  }
+
+  if (!isSuperAdmin) return null
 
   return (
     <NavigationMenu>
@@ -81,6 +114,10 @@ export function NavMenu() {
                     <NavigationMenuLink asChild>
                       <Link
                         href={item.href}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          handleNavigation(item.href)
+                        }}
                         className={cn(
                           "block select-none space-y-1 rounded-md p-3 leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground",
                           pathname === item.href && "bg-accent"
