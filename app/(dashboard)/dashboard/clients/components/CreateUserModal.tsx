@@ -145,10 +145,7 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
             is_super_admin: newUser.is_super_admin,
             needs_password_setup: true,
             temporary_password: temporaryPassword
-          },
-          emailRedirectTo: process.env.NODE_ENV === 'production' 
-            ? 'https://ai-admin-dashboard-git-dev-ai-denguns-projects.vercel.app/auth/signin'
-            : `${window.location.origin}/auth/signin`
+          }
         }
       });
 
@@ -160,6 +157,19 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
 
       if (!authData.user) {
         throw new Error('Não foi possível criar o usuário');
+      }
+
+      // Enviar email com a senha temporária
+      const { error: emailError } = await supabase.auth.resetPasswordForEmail(newUser.email, {
+        redirectTo: process.env.NODE_ENV === 'production' 
+          ? 'https://ai-admin-dashboard-git-dev-ai-denguns-projects.vercel.app/auth/signin'
+          : `${window.location.origin}/auth/signin`
+      });
+
+      if (emailError) {
+        console.error('Erro ao enviar email:', emailError);
+        toast.error('Erro ao enviar email com instruções. Tente novamente.');
+        return;
       }
 
       toast.success('Usuário criado com sucesso! Um email foi enviado com as instruções de acesso.');
