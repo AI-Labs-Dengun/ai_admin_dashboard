@@ -26,10 +26,10 @@ function SetupPasswordContent() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-          router.replace('/auth/signin');
-          return;
+          setCanSetupPassword(false);
+        } else {
+          setCanSetupPassword(true);
         }
-        setCanSetupPassword(true);
       } catch (error) {
         setError('Erro ao verificar sessão.');
       } finally {
@@ -86,6 +86,21 @@ function SetupPasswordContent() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
           </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!canSetupPassword) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Card className="w-[350px]">
+          <CardHeader>
+            <CardTitle>Link inválido ou expirado</CardTitle>
+            <CardDescription>
+              Você precisa acessar o link enviado por e-mail para definir sua senha. Solicite um novo link caso necessário.
+            </CardDescription>
+          </CardHeader>
         </Card>
       </div>
     );
