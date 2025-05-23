@@ -51,11 +51,8 @@ function SetupPasswordContent() {
         }
 
         try {
-          // Verificar o código usando verifyOtp
-          const { data: { session: newSession }, error: verifyError } = await supabase.auth.verifyOtp({
-            token_hash: code,
-            type: 'signup'
-          });
+          // Verificar o código usando exchangeCodeForSession
+          const { data: { session: newSession }, error: verifyError } = await supabase.auth.exchangeCodeForSession(code);
           
           if (verifyError) {
             console.error('Erro ao verificar código:', verifyError);
