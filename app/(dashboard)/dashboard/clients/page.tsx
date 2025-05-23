@@ -95,6 +95,7 @@ export default function ClientsPage() {
   const handleDeleteClick = (profile: Profile) => {
     setUserToDelete(profile);
     setIsDeleteModalOpen(true);
+    setSearchTerm("");
   };
 
   const filteredProfiles = profiles.filter(profile => 
@@ -196,9 +197,11 @@ export default function ClientsPage() {
         onClose={() => {
           setIsDeleteModalOpen(false);
           setUserToDelete(null);
+        }}
+        onSuccess={async () => {
+          await fetchProfiles();
           setSearchTerm("");
         }}
-        onSuccess={fetchProfiles}
         userToDelete={userToDelete}
       />
     </div>
