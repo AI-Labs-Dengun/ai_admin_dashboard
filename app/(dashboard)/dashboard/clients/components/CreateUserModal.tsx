@@ -142,8 +142,8 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
             is_super_admin: newUser.is_super_admin
           },
           emailRedirectTo: process.env.NODE_ENV === 'production'
-            ? 'https://ai-admin-dashboard-git-dev-ai-denguns-projects.vercel.app/auth/setup-password'
-            : `${window.location.origin}/auth/setup-password`
+            ? 'https://ai-admin-dashboard-git-dev-ai-denguns-projects.vercel.app/auth/callback'
+            : `${window.location.origin}/auth/callback`
         }
       });
 
