@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
   const [isSaving, setIsSaving] = useState(false);
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
   const [adminPassword, setAdminPassword] = useState("");
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [newUser, setNewUser] = useState({
     email: "",
     full_name: "",
@@ -27,6 +28,22 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
   });
 
   const supabase = createClientComponentClient();
+
+  useEffect(() => {
+    const checkSuperAdmin = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('is_super_admin')
+          .eq('id', user.id)
+          .single();
+        
+        setIsSuperAdmin(profile?.is_super_admin || false);
+      }
+    };
+    checkSuperAdmin();
+  }, []);
 
   const handleSuperAdminToggle = (checked: boolean) => {
     if (checked) {
@@ -61,6 +78,13 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
   const handleCreateUser = async () => {
     try {
       setIsSaving(true);
+
+      // Verificar se é super admin
+      if (!isSuperAdmin) {
+        toast.error('Apenas super admins podem criar usuários');
+        setIsSaving(false);
+        return;
+      }
 
       // Se for super admin, verificar a senha primeiro
       if (newUser.is_super_admin) {
