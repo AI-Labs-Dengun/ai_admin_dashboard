@@ -2,9 +2,10 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useSupabase } from '@/app/providers/supabase-provider';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'react-hot-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -19,12 +20,11 @@ function SetupPasswordContent() {
   const [canSetupPassword, setCanSetupPassword] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { supabase } = useSupabase();
+  const supabase = createClientComponentClient();
 
   useEffect(() => {
     const initializeSession = async () => {
       try {
-        // Capturar o código da URL
         const code = searchParams.get('code');
         const error = searchParams.get('error');
         const errorDescription = searchParams.get('error_description');
@@ -49,7 +49,7 @@ function SetupPasswordContent() {
         }
 
         try {
-          // Tentar trocar o código OTP por uma sessão
+          // Trocar o código por uma sessão (confirmação de signup)
           const { data: { session: newSession }, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
           
           if (exchangeError) {
@@ -104,10 +104,7 @@ function SetupPasswordContent() {
 
     try {
       const { error: updateError } = await supabase.auth.updateUser({
-        password: password,
-        data: {
-          needs_password_setup: false
-        }
+        password: password
       });
 
       if (updateError) {
@@ -115,8 +112,8 @@ function SetupPasswordContent() {
         throw updateError;
       }
 
-      toast.success('Senha definida com sucesso!');
-      router.push('/auth/signin');
+      toast.success('Senha definida com sucesso! Você já pode acessar o sistema.');
+      router.push('/dashboard');
     } catch (error: any) {
       console.error('Erro ao definir senha:', error);
       setError(error.message || 'Erro ao definir senha');
@@ -146,7 +143,7 @@ function SetupPasswordContent() {
         <CardHeader>
           <CardTitle>Definir Senha</CardTitle>
           <CardDescription>
-            Defina sua senha para acessar o sistema
+            Defina sua senha para acessar o sistema pela primeira vez
           </CardDescription>
         </CardHeader>
         {error && (
@@ -161,9 +158,11 @@ function SetupPasswordContent() {
           <form onSubmit={handleSetupPassword}>
             <CardContent className="space-y-4">
               <div className="space-y-2">
+                <Label htmlFor="password">Nova Senha</Label>
                 <Input
+                  id="password"
                   type="password"
-                  placeholder="Nova senha"
+                  placeholder="Digite sua nova senha"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -171,9 +170,11 @@ function SetupPasswordContent() {
                 />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirmar Senha</Label>
                 <Input
+                  id="confirmPassword"
                   type="password"
-                  placeholder="Confirme a senha"
+                  placeholder="Confirme sua nova senha"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
