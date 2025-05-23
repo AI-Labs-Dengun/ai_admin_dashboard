@@ -19,73 +19,25 @@ function SetupPasswordContent() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [canSetupPassword, setCanSetupPassword] = useState(false);
   const router = useRouter();
-  const searchParams = useSearchParams();
   const supabase = createClientComponentClient();
 
   useEffect(() => {
-    const initializeSession = async () => {
+    const checkSession = async () => {
       try {
-        // Capturar code e type da URL (enviados pelo Supabase)
-        const code = searchParams.get('code');
-        const type = searchParams.get('type');
-        const error = searchParams.get('error');
-        const errorDescription = searchParams.get('error_description');
-        
-        console.log('Código recebido:', code);
-        console.log('Type:', type);
-        console.log('Erro:', error);
-        
-        // Verificar se há erro na URL
-        if (error) {
-          console.error('Erro na URL:', error, errorDescription);
-          setError(errorDescription || 'Link inválido ou expirado.');
-          setIsInitializing(false);
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          router.replace('/auth/signin');
           return;
         }
-
-        if (!code) {
-          console.error('Código não encontrado na URL');
-          setError('Link inválido ou expirado.');
-          setIsInitializing(false);
-          return;
-        }
-
-        try {
-          // Verificar o código usando exchangeCodeForSession
-          const { data: { session: newSession }, error: verifyError } = await supabase.auth.exchangeCodeForSession(code);
-          
-          if (verifyError) {
-            console.error('Erro ao verificar código:', verifyError);
-            setError('Link inválido ou expirado. Por favor, solicite um novo link.');
-            setIsInitializing(false);
-            return;
-          }
-
-          if (!newSession) {
-            console.error('Nenhuma sessão retornada após verificação do código');
-            setError('Erro ao processar o link. Por favor, tente novamente.');
-            setIsInitializing(false);
-            return;
-          }
-
-          console.log('Código verificado com sucesso, sessão criada:', newSession);
-          setCanSetupPassword(true);
-        } catch (error) {
-          console.error('Erro ao processar código:', error);
-          setError('Erro ao processar o link. Por favor, tente novamente.');
-          setIsInitializing(false);
-          return;
-        }
+        setCanSetupPassword(true);
       } catch (error) {
-        console.error('Erro ao inicializar sessão:', error);
-        setError('Erro ao inicializar sessão.');
+        setError('Erro ao verificar sessão.');
       } finally {
         setIsInitializing(false);
       }
     };
-
-    initializeSession();
-  }, [router, supabase, searchParams]);
+    checkSession();
+  }, [router, supabase]);
 
   const handleSetupPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,14 +100,14 @@ function SetupPasswordContent() {
             Defina sua senha para acessar o sistema pela primeira vez
           </CardDescription>
         </CardHeader>
-        {error && (
+        {/* {error && (
           <CardContent>
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           </CardContent>
-        )}
+        )} */}
         {canSetupPassword && (
           <form onSubmit={handleSetupPassword}>
             <CardContent className="space-y-4">
