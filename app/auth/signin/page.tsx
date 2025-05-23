@@ -74,10 +74,7 @@ export default function SignIn() {
               {loading ? 'Entrando...' : 'Entrar'}
             </Button>
             <div className="text-sm text-center">
-              Não tem uma conta?{' '}
-              <Link href="/auth/signup" className="text-primary hover:underline">
-                Cadastre-se
-              </Link>
+              Entre em contato com um administrador para criar sua conta.
             </div>
           </CardFooter>
         </form>
