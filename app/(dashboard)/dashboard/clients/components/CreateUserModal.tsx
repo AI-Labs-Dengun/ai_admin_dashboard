@@ -122,15 +122,17 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
       }
 
       // Criar o usuário no auth com senha temporária
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email: newUser.email,
         password: Math.random().toString(36).slice(-8), // Senha temporária
-        email_confirm: true,
-        user_metadata: {
-          full_name: newUser.full_name,
-          company: newUser.company,
-          is_super_admin: newUser.is_super_admin,
-          needs_password_setup: true // Flag para indicar que precisa definir senha
+        options: {
+          data: {
+            full_name: newUser.full_name,
+            company: newUser.company,
+            is_super_admin: newUser.is_super_admin,
+            needs_password_setup: true // Flag para indicar que precisa definir senha
+          },
+          emailRedirectTo: `${window.location.origin}/auth/setup-password`
         }
       });
 
@@ -142,17 +144,6 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
 
       if (!authData.user) {
         throw new Error('Não foi possível criar o usuário');
-      }
-
-      // Enviar email de recuperação de senha
-      const { error: recoveryError } = await supabase.auth.resetPasswordForEmail(newUser.email, {
-        redirectTo: `${window.location.origin}/auth/setup-password`
-      });
-
-      if (recoveryError) {
-        console.error('Erro ao enviar email de recuperação:', recoveryError);
-        toast.error('Erro ao enviar email de recuperação.');
-        return;
       }
 
       toast.success('Usuário criado com sucesso! Um email foi enviado para definir a senha.');
