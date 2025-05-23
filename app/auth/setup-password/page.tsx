@@ -25,13 +25,13 @@ function SetupPasswordContent() {
   useEffect(() => {
     const initializeSession = async () => {
       try {
-        // Capturar token e type da URL (enviados pelo Supabase)
-        const token = searchParams.get('token');
+        // Capturar code e type da URL (enviados pelo Supabase)
+        const code = searchParams.get('code');
         const type = searchParams.get('type');
         const error = searchParams.get('error');
         const errorDescription = searchParams.get('error_description');
         
-        console.log('Token recebido:', token);
+        console.log('Código recebido:', code);
         console.log('Type:', type);
         console.log('Erro:', error);
         
@@ -43,46 +43,35 @@ function SetupPasswordContent() {
           return;
         }
 
-        if (!token || !type) {
-          console.error('Token ou type não encontrados na URL');
+        if (!code) {
+          console.error('Código não encontrado na URL');
           setError('Link inválido ou expirado.');
           setIsInitializing(false);
           return;
         }
 
-        // Verificar se é um token de signup
-        if (type !== 'signup') {
-          console.error('Tipo de token inválido:', type);
-          setError('Link inválido para definição de senha.');
-          setIsInitializing(false);
-          return;
-        }
-
         try {
-          // Verificar o token de signup usando verifyOtp
-          const { data: { session: newSession }, error: verifyError } = await supabase.auth.verifyOtp({
-            token_hash: token,
-            type: 'signup'
-          });
+          // Verificar o código usando verifyOtp
+          const { data: { session: newSession }, error: verifyError } = await supabase.auth.exchangeCodeForSession(code);
           
           if (verifyError) {
-            console.error('Erro ao verificar token:', verifyError);
+            console.error('Erro ao verificar código:', verifyError);
             setError('Link inválido ou expirado. Por favor, solicite um novo link.');
             setIsInitializing(false);
             return;
           }
 
           if (!newSession) {
-            console.error('Nenhuma sessão retornada após verificação do token');
+            console.error('Nenhuma sessão retornada após verificação do código');
             setError('Erro ao processar o link. Por favor, tente novamente.');
             setIsInitializing(false);
             return;
           }
 
-          console.log('Token verificado com sucesso, sessão criada:', newSession);
+          console.log('Código verificado com sucesso, sessão criada:', newSession);
           setCanSetupPassword(true);
         } catch (error) {
-          console.error('Erro ao processar token:', error);
+          console.error('Erro ao processar código:', error);
           setError('Erro ao processar o link. Por favor, tente novamente.');
           setIsInitializing(false);
           return;
