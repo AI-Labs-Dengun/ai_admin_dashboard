@@ -15,14 +15,24 @@ interface CreateUserModalProps {
   onSuccess: () => Promise<void>;
 }
 
-async function generateCodeChallenge() {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(Math.random().toString(36).slice(-8));
-  const hash = await crypto.subtle.digest('SHA-256', data);
-  return btoa(String.fromCharCode(...new Uint8Array(hash)))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
+// Função para gerar senha temporária segura
+function generateTemporaryPassword(length: number = 10): string {
+  const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+  let password = '';
+  
+  // Garantir pelo menos um caractere de cada tipo
+  password += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)]; // Maiúscula
+  password += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)]; // Minúscula
+  password += '0123456789'[Math.floor(Math.random() * 10)]; // Número
+  password += '!@#$%^&*'[Math.floor(Math.random() * 8)]; // Caractere especial
+  
+  // Completar o resto da senha
+  for (let i = password.length; i < length; i++) {
+    password += charset[Math.floor(Math.random() * charset.length)];
+  }
+  
+  // Embaralhar a senha
+  return password.split('').sort(() => Math.random() - 0.5).join('');
 }
 
 export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalProps) {
@@ -121,18 +131,22 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
         return;
       }
 
+      // Gerar senha temporária
+      const temporaryPassword = generateTemporaryPassword();
+
       // Criar o usuário no auth com senha temporária
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: newUser.email,
-        password: Math.random().toString(36).slice(-8), // Senha temporária
+        password: temporaryPassword,
         options: {
           data: {
             full_name: newUser.full_name,
             company: newUser.company,
             is_super_admin: newUser.is_super_admin,
-            needs_password_setup: true // Flag para indicar que precisa definir senha
+            needs_password_setup: true,
+            temporary_password: temporaryPassword
           },
-          emailRedirectTo: `${window.location.origin}/auth/setup-password`
+          emailRedirectTo: `${window.location.origin}/auth/signin`
         }
       });
 
@@ -146,7 +160,7 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
         throw new Error('Não foi possível criar o usuário');
       }
 
-      toast.success('Usuário criado com sucesso! Um email foi enviado para definir a senha.');
+      toast.success('Usuário criado com sucesso! Um email foi enviado com as instruções de acesso.');
       
       // Limpar o formulário
       setNewUser({
@@ -174,7 +188,7 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
         <DialogHeader>
           <DialogTitle>Criar Novo Usuário</DialogTitle>
           <DialogDescription>
-            Preencha os dados para criar um novo usuário no sistema. Um email será enviado para definir a senha.
+            Preencha os dados para criar um novo usuário no sistema. Um email será enviado com as instruções de acesso.
           </DialogDescription>
         </DialogHeader>
 

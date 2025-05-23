@@ -1,20 +1,35 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
-import { useSupabase } from '@/app/providers/supabase-provider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import Link from 'next/link';
+import { toast } from 'react-hot-toast';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AlertTriangle } from 'lucide-react';
+import { ResetPasswordModal } from '@/app/(dashboard)/dashboard/clients/components/ResetPasswordModal';
 
 export default function SignIn() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
   const router = useRouter();
-  const { supabase } = useSupabase();
+  const supabase = createClientComponentClient();
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        router.push('/dashboard');
+      }
+    };
+    checkSession();
+  }, [router, supabase]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,17 +37,24 @@ export default function SignIn() {
     setError(null);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) throw error;
+      if (signInError) {
+        throw signInError;
+      }
 
-      router.push('/dashboard');
-      router.refresh();
+      if (data.user?.user_metadata?.needs_password_setup) {
+        setShowResetPasswordModal(true);
+      } else {
+        router.push('/dashboard');
+      }
     } catch (error: any) {
-      setError(error.message);
+      console.error('Erro ao fazer login:', error);
+      setError(error.message || 'Erro ao fazer login');
+      toast.error('Erro ao fazer login');
     } finally {
       setLoading(false);
     }
@@ -43,42 +65,60 @@ export default function SignIn() {
       <Card className="w-[350px]">
         <CardHeader>
           <CardTitle>Login</CardTitle>
-          <CardDescription>Entre com suas credenciais para acessar o sistema</CardDescription>
+          <CardDescription>
+            Entre com suas credenciais para acessar o sistema
+          </CardDescription>
         </CardHeader>
+
+        {error && (
+          <CardContent>
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          </CardContent>
+        )}
+
         <form onSubmit={handleSignIn}>
           <CardContent className="space-y-4">
-            {error && (
-              <div className="text-sm text-red-500">{error}</div>
-            )}
             <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
               <Input
+                id="email"
                 type="email"
-                placeholder="Email"
+                placeholder="seu@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="password">Senha</Label>
               <Input
+                id="password"
                 type="password"
-                placeholder="Senha"
+                placeholder="Digite sua senha"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
             </div>
           </CardContent>
-          <CardFooter className="flex flex-col space-y-4">
+          <CardFooter>
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Entrando...' : 'Entrar'}
             </Button>
-            <div className="text-sm text-center">
-              Entre em contato com um administrador para criar sua conta.
-            </div>
           </CardFooter>
         </form>
       </Card>
+
+      <ResetPasswordModal
+        isOpen={showResetPasswordModal}
+        onClose={() => {
+          setShowResetPasswordModal(false);
+          router.push('/dashboard');
+        }}
+      />
     </div>
   );
 } 
