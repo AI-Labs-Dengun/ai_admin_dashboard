@@ -25,42 +25,53 @@ function SetupPasswordContent() {
     const initializeSession = async () => {
       try {
         const code = searchParams.get('code');
-        const codeVerifier = searchParams.get('code_verifier');
         console.log('Código recebido:', code);
-        console.log('Code verifier recebido:', codeVerifier);
 
-        if (!code || !codeVerifier) {
-          console.error('Código ou code_verifier não encontrados na URL');
+        if (!code) {
+          console.error('Nenhum código encontrado na URL');
           setError('Link inválido ou expirado.');
           setIsInitializing(false);
           return;
         }
 
-        const { data: { session: newSession }, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code, {
-          code_verifier: codeVerifier
-        });
+        // Verificar se já existe uma sessão
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
         
-        if (exchangeError) {
-          console.error('Erro ao trocar código por sessão:', exchangeError);
-          setError('Link inválido ou expirado.');
-          setIsInitializing(false);
-          return;
-        }
+        if (!currentSession) {
+          // Se não houver sessão, tentar recuperar a sessão com o código
+          const { data: { session: newSession }, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+          
+          if (exchangeError) {
+            console.error('Erro ao trocar código por sessão:', exchangeError);
+            setError('Link inválido ou expirado.');
+            setIsInitializing(false);
+            return;
+          }
 
-        if (!newSession) {
-          console.error('Nenhuma sessão retornada após troca de código');
-          setError('Link inválido ou expirado.');
-          setIsInitializing(false);
-          return;
-        }
+          if (!newSession) {
+            console.error('Nenhuma sessão retornada após troca de código');
+            setError('Link inválido ou expirado.');
+            setIsInitializing(false);
+            return;
+          }
 
-        console.log('Sessão obtida com sucesso:', newSession);
+          console.log('Sessão obtida com sucesso:', newSession);
 
-        if (newSession.user.user_metadata?.needs_password_setup) {
-          setCanSetupPassword(true);
+          // Verificar se o usuário precisa definir senha
+          if (newSession.user.user_metadata?.needs_password_setup) {
+            setCanSetupPassword(true);
+          } else {
+            console.log('Usuário não precisa definir senha:', newSession.user.user_metadata);
+            setError('Este link já foi utilizado ou a senha já foi definida.');
+          }
         } else {
-          console.log('Usuário não precisa definir senha:', newSession.user.user_metadata);
-          setError('Este link já foi utilizado ou a senha já foi definida.');
+          // Se já existe uma sessão, verificar se o usuário precisa definir senha
+          if (currentSession.user.user_metadata?.needs_password_setup) {
+            setCanSetupPassword(true);
+          } else {
+            console.log('Usuário não precisa definir senha:', currentSession.user.user_metadata);
+            setError('Este link já foi utilizado ou a senha já foi definida.');
+          }
         }
       } catch (error) {
         console.error('Erro ao inicializar sessão:', error);
