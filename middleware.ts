@@ -23,7 +23,13 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(redirectUrl);
     }
 
-    // Se houver sessão e tentar acessar páginas de auth, redireciona para dashboard
+    // Permitir acesso a /auth/setup-password sempre (necessário para processar tokens)
+    if (req.nextUrl.pathname === '/auth/setup-password') {
+      console.log('Acesso permitido a /auth/setup-password');
+      return res;
+    }
+
+    // Se houver sessão e tentar acessar outras páginas de auth (exceto setup-password), redireciona para dashboard
     if (session && req.nextUrl.pathname.startsWith('/auth')) {
       console.log('Usuário autenticado tentando acessar página de auth:', req.nextUrl.pathname);
       return NextResponse.redirect(new URL('/dashboard', req.url));
