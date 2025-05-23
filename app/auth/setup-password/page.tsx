@@ -24,8 +24,11 @@ function SetupPasswordContent() {
   useEffect(() => {
     const initializeSession = async () => {
       try {
+        // Capturar o código da URL
         const code = searchParams.get('code');
+        const type = searchParams.get('type');
         console.log('Código recebido:', code);
+        console.log('Tipo de código:', type);
 
         if (!code) {
           console.error('Nenhum código encontrado na URL');
@@ -38,40 +41,35 @@ function SetupPasswordContent() {
         const { data: { session: currentSession } } = await supabase.auth.getSession();
         
         if (!currentSession) {
-          // Se não houver sessão, tentar recuperar a sessão com o código
-          const { data: { session: newSession }, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-          
-          if (exchangeError) {
-            console.error('Erro ao trocar código por sessão:', exchangeError);
-            setError('Link inválido ou expirado.');
-            setIsInitializing(false);
-            return;
-          }
+          try {
+            // Tentar trocar o código por uma sessão
+            const { data: { session: newSession }, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+            
+            if (exchangeError) {
+              console.error('Erro ao trocar código por sessão:', exchangeError);
+              setError('Link inválido ou expirado.');
+              setIsInitializing(false);
+              return;
+            }
 
-          if (!newSession) {
-            console.error('Nenhuma sessão retornada após troca de código');
-            setError('Link inválido ou expirado.');
-            setIsInitializing(false);
-            return;
-          }
+            if (!newSession) {
+              console.error('Nenhuma sessão retornada após troca de código');
+              setError('Link inválido ou expirado.');
+              setIsInitializing(false);
+              return;
+            }
 
-          console.log('Sessão obtida com sucesso:', newSession);
-
-          // Verificar se o usuário precisa definir senha
-          if (newSession.user.user_metadata?.needs_password_setup) {
+            console.log('Sessão obtida com sucesso:', newSession);
             setCanSetupPassword(true);
-          } else {
-            console.log('Usuário não precisa definir senha:', newSession.user.user_metadata);
-            setError('Este link já foi utilizado ou a senha já foi definida.');
+          } catch (error) {
+            console.error('Erro ao processar código:', error);
+            setError('Erro ao processar o link. Por favor, tente novamente.');
+            setIsInitializing(false);
+            return;
           }
         } else {
-          // Se já existe uma sessão, verificar se o usuário precisa definir senha
-          if (currentSession.user.user_metadata?.needs_password_setup) {
-            setCanSetupPassword(true);
-          } else {
-            console.log('Usuário não precisa definir senha:', currentSession.user.user_metadata);
-            setError('Este link já foi utilizado ou a senha já foi definida.');
-          }
+          // Se já existe uma sessão, permitir a definição de senha
+          setCanSetupPassword(true);
         }
       } catch (error) {
         console.error('Erro ao inicializar sessão:', error);
@@ -109,13 +107,16 @@ function SetupPasswordContent() {
         }
       });
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error('Erro ao atualizar senha:', updateError);
+        throw updateError;
+      }
 
       toast.success('Senha definida com sucesso!');
       router.push('/auth/signin');
     } catch (error: any) {
       console.error('Erro ao definir senha:', error);
-      setError(error.message);
+      setError(error.message || 'Erro ao definir senha');
       toast.error('Erro ao definir senha');
     } finally {
       setLoading(false);
