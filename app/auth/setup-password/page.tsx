@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSupabase } from '@/app/providers/supabase-provider';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,7 @@ import { toast } from 'react-hot-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertTriangle } from 'lucide-react';
 
-export default function SetupPassword() {
+function SetupPasswordContent() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -160,5 +160,27 @@ export default function SetupPassword() {
         )}
       </Card>
     </div>
+  );
+}
+
+function LoadingFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <Card className="w-[350px]">
+        <CardContent className="p-6">
+          <div className="flex justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default function SetupPassword() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <SetupPasswordContent />
+    </Suspense>
   );
 } 
