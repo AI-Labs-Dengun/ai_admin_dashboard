@@ -1,9 +1,13 @@
+'use client';
+
 import { Coins, MessageSquare, AlertTriangle, Clock } from "lucide-react"
 import { StatCard } from "@/components/dashboard/stat-card"
 import { UsageChart } from "@/components/dashboard/usage-chart"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Skeleton } from "@/components/ui/skeleton"
+import { useEffect, useState } from "react"
 
 // Sample data for the dashboard
 const usageData = [
@@ -41,6 +45,77 @@ const topAgents = [
 ]
 
 export default function DashboardPage() {
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    // Simulando carregamento de dados
+    const timer = setTimeout(() => {
+      setLoading(false)
+    }, 1500)
+
+    return () => clearTimeout(timer)
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <Skeleton className="h-9 w-[200px]" />
+          <Skeleton className="h-5 w-[300px] mt-2" />
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <Skeleton className="h-8 w-[120px]" />
+                  <Skeleton className="h-8 w-8 rounded-full" />
+                </div>
+                <Skeleton className="h-7 w-[100px] mt-2" />
+                <Skeleton className="h-4 w-[80px] mt-2" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card className="col-span-3 md:col-span-2">
+            <CardHeader>
+              <Skeleton className="h-6 w-[200px]" />
+              <Skeleton className="h-4 w-[300px] mt-2" />
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-[300px] w-full" />
+            </CardContent>
+          </Card>
+
+          <Card className="col-span-3 md:col-span-1">
+            <CardHeader>
+              <Skeleton className="h-6 w-[180px]" />
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Skeleton className="h-10 w-10 rounded-full" />
+                      <div>
+                        <Skeleton className="h-4 w-[120px]" />
+                        <Skeleton className="h-3 w-[80px] mt-1" />
+                      </div>
+                    </div>
+                    <Skeleton className="h-5 w-[60px]" />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div>

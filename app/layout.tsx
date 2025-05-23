@@ -1,29 +1,32 @@
-import type React from "react"
-import type { Metadata } from "next"
-import { Inter } from "next/font/google"
-import "./globals.css"
-import { ThemeProvider } from "@/components/theme-provider"
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import './globals.css';
+import { Toaster } from '@/components/ui/toaster';
+import SupabaseProvider from '@/app/providers/supabase-provider';
+import { ThemeProvider } from '@/components/theme-provider';
 
-const inter = Inter({ subsets: ["latin"] })
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: "AI Agent Admin Dashboard",
-  description: "Multi-tenant admin dashboard for AI agent monitoring",
-    generator: 'v0.dev'
-}
+  title: 'AI Admin Dashboard',
+  description: 'Dashboard administrativo para gerenciamento de IA',
+};
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode
-}>) {
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>
-        <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
-          {children}
+      <body className={inter.className} suppressHydrationWarning>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+          <SupabaseProvider>
+            {children}
+            <Toaster />
+          </SupabaseProvider>
         </ThemeProvider>
       </body>
     </html>
-  )
+  );
 }
