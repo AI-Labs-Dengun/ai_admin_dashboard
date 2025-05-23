@@ -134,6 +134,7 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
       // Criar o usuário no auth (fluxo padrão Supabase)
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: newUser.email,
+        password: Math.random().toString(36).slice(-8), // senha aleatória
         options: {
           data: {
             full_name: newUser.full_name,
