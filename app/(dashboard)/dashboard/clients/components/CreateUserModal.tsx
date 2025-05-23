@@ -146,7 +146,9 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
             needs_password_setup: true,
             temporary_password: temporaryPassword
           },
-          emailRedirectTo: `${window.location.origin}/auth/signin`
+          emailRedirectTo: process.env.NODE_ENV === 'production' 
+            ? 'https://ai-admin-dashboard-git-dev-ai-denguns-projects.vercel.app/auth/signin'
+            : `${window.location.origin}/auth/signin`
         }
       });
 
