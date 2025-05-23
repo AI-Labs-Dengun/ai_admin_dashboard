@@ -10,14 +10,12 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { toast } from 'react-hot-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertTriangle } from 'lucide-react';
-import { ResetPasswordModal } from '@/app/(dashboard)/dashboard/clients/components/ResetPasswordModal';
 
 export default function SignIn() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
   const router = useRouter();
   const supabase = createClientComponentClient();
 
@@ -46,11 +44,7 @@ export default function SignIn() {
         throw signInError;
       }
 
-      if (data.user?.user_metadata?.needs_password_setup) {
-        setShowResetPasswordModal(true);
-      } else {
-        router.push('/dashboard');
-      }
+      router.push('/dashboard');
     } catch (error: any) {
       console.error('Erro ao fazer login:', error);
       setError(error.message || 'Erro ao fazer login');
@@ -111,14 +105,6 @@ export default function SignIn() {
           </CardFooter>
         </form>
       </Card>
-
-      <ResetPasswordModal
-        isOpen={showResetPasswordModal}
-        onClose={() => {
-          setShowResetPasswordModal(false);
-          router.push('/dashboard');
-        }}
-      />
     </div>
   );
 } 

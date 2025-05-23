@@ -131,21 +131,18 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
         return;
       }
 
-      // Gerar senha temporária
-      const temporaryPassword = generateTemporaryPassword();
-
-      // Criar o usuário no auth com senha temporária
+      // Criar o usuário no auth (fluxo padrão Supabase)
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: newUser.email,
-        password: temporaryPassword,
         options: {
           data: {
             full_name: newUser.full_name,
             company: newUser.company,
-            is_super_admin: newUser.is_super_admin,
-            needs_password_setup: true,
-            temporary_password: temporaryPassword
-          }
+            is_super_admin: newUser.is_super_admin
+          },
+          emailRedirectTo: process.env.NODE_ENV === 'production'
+            ? 'https://ai-admin-dashboard-git-dev-ai-denguns-projects.vercel.app/auth/callback'
+            : `${window.location.origin}/auth/callback`
         }
       });
 
@@ -159,20 +156,7 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
         throw new Error('Não foi possível criar o usuário');
       }
 
-      // Enviar email com a senha temporária
-      const { error: emailError } = await supabase.auth.resetPasswordForEmail(newUser.email, {
-        redirectTo: process.env.NODE_ENV === 'production' 
-          ? 'https://ai-admin-dashboard-git-dev-ai-denguns-projects.vercel.app/auth/signin'
-          : `${window.location.origin}/auth/signin`
-      });
-
-      if (emailError) {
-        console.error('Erro ao enviar email:', emailError);
-        toast.error('Erro ao enviar email com instruções. Tente novamente.');
-        return;
-      }
-
-      toast.success('Usuário criado com sucesso! Um email foi enviado com as instruções de acesso.');
+      toast.success('Usuário criado com sucesso! Um email foi enviado para confirmação e definição de senha.');
       
       // Limpar o formulário
       setNewUser({
