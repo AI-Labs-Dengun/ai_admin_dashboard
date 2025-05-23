@@ -25,16 +25,20 @@ function SetupPasswordContent() {
     const initializeSession = async () => {
       try {
         const code = searchParams.get('code');
+        const codeVerifier = searchParams.get('code_verifier');
         console.log('Código recebido:', code);
+        console.log('Code verifier recebido:', codeVerifier);
 
-        if (!code) {
-          console.error('Nenhum código encontrado na URL');
+        if (!code || !codeVerifier) {
+          console.error('Código ou code_verifier não encontrados na URL');
           setError('Link inválido ou expirado.');
           setIsInitializing(false);
           return;
         }
 
-        const { data: { session: newSession }, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        const { data: { session: newSession }, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code, {
+          code_verifier: codeVerifier
+        });
         
         if (exchangeError) {
           console.error('Erro ao trocar código por sessão:', exchangeError);
