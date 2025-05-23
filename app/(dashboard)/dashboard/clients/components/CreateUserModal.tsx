@@ -132,8 +132,7 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
             is_super_admin: newUser.is_super_admin,
             needs_password_setup: true // Flag para indicar que precisa definir senha
           },
-          emailRedirectTo: `https://ai-admin-dashboard-git-dev-ai-denguns-projects.vercel.app/auth/setup-password`
-          // emailRedirectTo: `${window.location.origin}/auth/setup-password`
+          emailRedirectTo: `${window.location.origin}/auth/setup-password`
         }
       });
 

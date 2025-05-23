@@ -26,9 +26,20 @@ function SetupPasswordContent() {
       try {
         // Capturar o código da URL
         const code = searchParams.get('code');
-        const type = searchParams.get('type');
+        const error = searchParams.get('error');
+        const errorDescription = searchParams.get('error_description');
+        
         console.log('Código recebido:', code);
-        console.log('Tipo de código:', type);
+        console.log('Erro:', error);
+        console.log('Descrição do erro:', errorDescription);
+
+        // Verificar se há erro na URL
+        if (error) {
+          console.error('Erro na URL:', error, errorDescription);
+          setError(errorDescription || 'Link inválido ou expirado.');
+          setIsInitializing(false);
+          return;
+        }
 
         if (!code) {
           console.error('Nenhum código encontrado na URL');
@@ -37,39 +48,31 @@ function SetupPasswordContent() {
           return;
         }
 
-        // Verificar se já existe uma sessão
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
-        
-        if (!currentSession) {
-          try {
-            // Tentar trocar o código por uma sessão
-            const { data: { session: newSession }, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-            
-            if (exchangeError) {
-              console.error('Erro ao trocar código por sessão:', exchangeError);
-              setError('Link inválido ou expirado.');
-              setIsInitializing(false);
-              return;
-            }
+        try {
+          // Tentar trocar o código OTP por uma sessão
+          const { data: { session: newSession }, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+          
+          if (exchangeError) {
+            console.error('Erro ao trocar código por sessão:', exchangeError);
+            setError('Link inválido ou expirado. Por favor, solicite um novo link.');
+            setIsInitializing(false);
+            return;
+          }
 
-            if (!newSession) {
-              console.error('Nenhuma sessão retornada após troca de código');
-              setError('Link inválido ou expirado.');
-              setIsInitializing(false);
-              return;
-            }
-
-            console.log('Sessão obtida com sucesso:', newSession);
-            setCanSetupPassword(true);
-          } catch (error) {
-            console.error('Erro ao processar código:', error);
+          if (!newSession) {
+            console.error('Nenhuma sessão retornada após troca de código');
             setError('Erro ao processar o link. Por favor, tente novamente.');
             setIsInitializing(false);
             return;
           }
-        } else {
-          // Se já existe uma sessão, permitir a definição de senha
+
+          console.log('Sessão obtida com sucesso:', newSession);
           setCanSetupPassword(true);
+        } catch (error) {
+          console.error('Erro ao processar código:', error);
+          setError('Erro ao processar o link. Por favor, tente novamente.');
+          setIsInitializing(false);
+          return;
         }
       } catch (error) {
         console.error('Erro ao inicializar sessão:', error);
