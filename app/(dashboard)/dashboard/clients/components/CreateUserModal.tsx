@@ -15,6 +15,16 @@ interface CreateUserModalProps {
   onSuccess: () => Promise<void>;
 }
 
+async function generateCodeChallenge() {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(Math.random().toString(36).slice(-8));
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return btoa(String.fromCharCode(...new Uint8Array(hash)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
 export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
