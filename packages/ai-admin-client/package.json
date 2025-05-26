@@ -1,15 +1,20 @@
 {
   "name": "dengun_ai-admin-client",
-  "version": "1.0.0",
+  "version": "1.1.9",
   "description": "Cliente para integração com o AI Admin Dashboard",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "dengun-ai-init": "./dist/src/scripts/init.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "test": "jest",
     "lint": "eslint src --ext .ts",
-    "prepare": "npm run build",
-    "postinstall": "node dist/scripts/init.js"
+    "prepare": "npm run build"
   },
   "keywords": [
     "ai",
