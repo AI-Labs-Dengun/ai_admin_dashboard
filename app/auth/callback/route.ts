@@ -9,59 +9,65 @@ export async function GET(request: Request) {
     const next = requestUrl.searchParams.get('next') || '/dashboard';
     const type = requestUrl.searchParams.get('type');
 
-    // Se não tiver código, verifica se tem token de acesso no hash
-    if (!code) {
-      const hash = requestUrl.hash;
-      if (hash && hash.includes('access_token')) {
-        // Extrair o token do hash
-        const params = new URLSearchParams(hash.substring(1));
-        const accessToken = params.get('access_token');
+    const cookieStore = cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+
+    // Se tiver código, trocar por sessão
+    if (code) {
+      const { data: { session }, error } = await supabase.auth.exchangeCodeForSession(code);
+
+      if (error) {
+        console.error('Erro ao trocar código por sessão:', error);
+        return NextResponse.redirect(new URL('/auth/signin', request.url));
+      }
+
+      if (!session) {
+        return NextResponse.redirect(new URL('/auth/signin', request.url));
+      }
+
+      // Verificar se o usuário precisa definir senha
+      if (session.user.user_metadata?.needs_password_setup) {
+        return NextResponse.redirect(new URL('/auth/setup-password', requestUrl.origin));
+      }
+
+      return NextResponse.redirect(new URL(next, requestUrl.origin));
+    }
+
+    // Se não tiver código, verificar se tem token de acesso no hash
+    const hash = requestUrl.hash;
+    if (hash && hash.includes('access_token')) {
+      const params = new URLSearchParams(hash.substring(1));
+      const accessToken = params.get('access_token');
+      
+      if (accessToken) {
+        // Verificar se o usuário precisa definir senha
+        const { data: { user }, error } = await supabase.auth.getUser(accessToken);
         
-        if (accessToken) {
-          const cookieStore = cookies();
-          const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
-          
-          // Verificar se o usuário precisa definir senha
-          const { data: { user }, error } = await supabase.auth.getUser(accessToken);
-          
-          if (error) {
-            console.error('Erro ao verificar usuário:', error);
+        if (error) {
+          console.error('Erro ao verificar usuário:', error);
+          return NextResponse.redirect(new URL('/auth/signin', request.url));
+        }
+
+        if (user?.user_metadata?.needs_password_setup) {
+          // Criar sessão com o token de acesso
+          const { error: sessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: params.get('refresh_token') || ''
+          });
+
+          if (sessionError) {
+            console.error('Erro ao criar sessão:', sessionError);
             return NextResponse.redirect(new URL('/auth/signin', request.url));
           }
 
-          if (user?.user_metadata?.needs_password_setup) {
-            return NextResponse.redirect(new URL('/auth/setup-password', requestUrl.origin));
-          }
-
-          return NextResponse.redirect(new URL(next, requestUrl.origin));
+          return NextResponse.redirect(new URL('/auth/setup-password', requestUrl.origin));
         }
+
+        return NextResponse.redirect(new URL(next, requestUrl.origin));
       }
-      
-      return NextResponse.redirect(new URL('/auth/signin', request.url));
     }
-
-    const cookieStore = cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     
-    // Trocar o código por uma sessão
-    const { data: { session }, error } = await supabase.auth.exchangeCodeForSession(code);
-
-    if (error) {
-      console.error('Erro ao trocar código por sessão:', error);
-      return NextResponse.redirect(new URL('/auth/signin', request.url));
-    }
-
-    if (!session) {
-      return NextResponse.redirect(new URL('/auth/signin', request.url));
-    }
-
-    // Verificar se o usuário precisa definir senha
-    if (session.user.user_metadata?.needs_password_setup) {
-      return NextResponse.redirect(new URL('/auth/setup-password', requestUrl.origin));
-    }
-
-    // Se não precisar definir senha, redireciona para o dashboard
-    return NextResponse.redirect(new URL(next, requestUrl.origin));
+    return NextResponse.redirect(new URL('/auth/signin', request.url));
   } catch (error) {
     console.error('Erro no callback de autenticação:', error);
     return NextResponse.redirect(new URL('/auth/signin', request.url));

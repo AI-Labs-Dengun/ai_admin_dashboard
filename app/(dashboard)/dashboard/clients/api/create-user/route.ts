@@ -49,16 +49,37 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: authError.message }, { status: 400 });
     }
 
-    // Enviar magic link
-    const { error: magicLinkError } = await supabaseAdmin.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
+    // Criar perfil do usuário
+    const { error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .insert([
+        {
+          id: authData.user.id,
+          email,
+          full_name,
+          company,
+          is_super_admin,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }
+      ]);
+
+    if (profileError) {
+      console.error('Erro ao criar perfil:', profileError);
+      return NextResponse.json({ error: 'Erro ao criar perfil do usuário' }, { status: 400 });
+    }
+
+    // Enviar magic link usando o método de convite
+    const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+      data: {
+        needs_password_setup: true
       }
     });
 
-    if (magicLinkError) {
-      return NextResponse.json({ error: magicLinkError.message }, { status: 400 });
+    if (inviteError) {
+      console.error('Erro ao enviar convite:', inviteError);
+      return NextResponse.json({ error: inviteError.message }, { status: 400 });
     }
 
     return NextResponse.json({ 
