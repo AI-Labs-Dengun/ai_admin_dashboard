@@ -2,56 +2,67 @@ import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-export async function middleware(req: NextRequest) {
+export async function middleware(request: NextRequest) {
+  const res = NextResponse.next();
+  const supabase = createMiddlewareClient({ req: request, res });
+
   try {
-    const res = NextResponse.next();
-    const supabase = createMiddlewareClient({ req, res });
-
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    // Redirecionar tentativas de acesso ao signup -- COMENTAR ESSA LINHA PARA DESATIVAR O SIGNUP
-    // if (req.nextUrl.pathname === '/auth/signup') {
-    //   console.log('Tentativa de acesso ao signup desativado');
-    //   return NextResponse.redirect(new URL('/auth/signin', req.url));
-    // }
-
-    // Lista de rotas protegidas que requerem autenticação
-    const protectedRoutes = ['/dashboard', '/profile', '/settings'];
-    const isProtectedRoute = protectedRoutes.some(route => req.nextUrl.pathname.startsWith(route));
-
-    // Se for uma rota protegida e não houver sessão, redireciona para login
-    if (isProtectedRoute && !session) {
-      console.log('Rota protegida acessada sem sessão:', req.nextUrl.pathname);
-      const redirectUrl = new URL('/auth/signin', req.url);
-      redirectUrl.searchParams.set('redirectedFrom', req.nextUrl.pathname);
-      return NextResponse.redirect(redirectUrl);
-    }
-
-    // Permitir acesso a /auth/setup-password sempre (necessário para processar tokens)
-    if (req.nextUrl.pathname === '/auth/setup-password') {
-      console.log('Acesso permitido a /auth/setup-password');
+    // Verificar se é uma requisição para a página de setup de senha
+    if (request.nextUrl.pathname === '/auth/setup-password') {
       return res;
     }
 
-    // Se houver sessão e tentar acessar outras páginas de auth (exceto setup-password), redireciona para dashboard
-    if (session && req.nextUrl.pathname.startsWith('/auth')) {
-      console.log('Usuário autenticado tentando acessar página de auth:', req.nextUrl.pathname);
-      return NextResponse.redirect(new URL('/dashboard', req.url));
+    // Verificar se é uma requisição para o callback
+    if (request.nextUrl.pathname === '/auth/callback') {
+      return res;
     }
 
-    // Se não houver sessão e não for uma rota pública, redireciona para login
-    if (!session && !req.nextUrl.pathname.startsWith('/auth')) {
-      console.log('Rota não pública acessada sem sessão:', req.nextUrl.pathname);
-      return NextResponse.redirect(new URL('/auth/signin', req.url));
+    // Verificar se é uma requisição para a página de login
+    if (request.nextUrl.pathname === '/auth/signin') {
+      // Verificar se tem token de acesso no hash
+      const hash = request.url.split('#')[1];
+      if (hash && hash.includes('access_token')) {
+        const params = new URLSearchParams(hash);
+        const accessToken = params.get('access_token');
+        const refreshToken = params.get('refresh_token');
+        
+        if (accessToken && refreshToken) {
+          // Criar sessão com o token
+          const { data: { session }, error: sessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken
+          });
+
+          if (sessionError) {
+            console.error('Erro ao criar sessão:', sessionError);
+            return res;
+          }
+
+          if (session?.user?.user_metadata?.needs_password_setup) {
+            // Redirecionar para setup de senha
+            const response = NextResponse.redirect(new URL('/auth/setup-password', request.url));
+            // Copiar os cookies da sessão
+            res.cookies.getAll().forEach(cookie => {
+              response.cookies.set(cookie.name, cookie.value);
+            });
+            return response;
+          }
+        }
+      }
+    }
+
+    // Verificar sessão atual
+    const { data: { session } } = await supabase.auth.getSession();
+
+    // Se tiver sessão e precisar definir senha, redirecionar
+    if (session?.user?.user_metadata?.needs_password_setup) {
+      return NextResponse.redirect(new URL('/auth/setup-password', request.url));
     }
 
     return res;
   } catch (error) {
     console.error('Erro no middleware:', error);
-    // Em caso de erro, redireciona para login
-    return NextResponse.redirect(new URL('/auth/signin', req.url));
+    return res;
   }
 }
 
@@ -64,6 +75,6 @@ export const config = {
      * - favicon.ico (favicon file)
      * - public folder
      */
-    '/((?!_next/static|_next/image|favicon.ico|public/).*)',
+    '/((?!_next/static|_next/image|favicon.ico|public).*)',
   ],
 }; 

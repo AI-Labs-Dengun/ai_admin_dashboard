@@ -27,6 +27,17 @@ export async function GET(request: Request) {
 
       // Verificar se o usuário precisa definir senha
       if (session.user.user_metadata?.needs_password_setup) {
+        // Garantir que a sessão está ativa
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: session.access_token,
+          refresh_token: session.refresh_token
+        });
+
+        if (sessionError) {
+          console.error('Erro ao definir sessão:', sessionError);
+          return NextResponse.redirect(new URL('/auth/signin', request.url));
+        }
+
         return NextResponse.redirect(new URL('/auth/setup-password', requestUrl.origin));
       }
 
@@ -38,6 +49,7 @@ export async function GET(request: Request) {
     if (hash && hash.includes('access_token')) {
       const params = new URLSearchParams(hash.substring(1));
       const accessToken = params.get('access_token');
+      const refreshToken = params.get('refresh_token');
       
       if (accessToken) {
         // Verificar se o usuário precisa definir senha
@@ -52,7 +64,7 @@ export async function GET(request: Request) {
           // Criar sessão com o token de acesso
           const { error: sessionError } = await supabase.auth.setSession({
             access_token: accessToken,
-            refresh_token: params.get('refresh_token') || ''
+            refresh_token: refreshToken || ''
           });
 
           if (sessionError) {

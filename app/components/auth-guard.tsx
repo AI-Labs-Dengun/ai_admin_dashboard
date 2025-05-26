@@ -108,7 +108,12 @@ export function AuthGuard({ children }: AuthGuardProps) {
     );
   }
 
-  if (!isAuthenticated && pathname !== '/auth/setup-password') {
+  // Permitir acesso à página de setup de senha mesmo sem autenticação
+  if (pathname === '/auth/setup-password') {
+    return <>{children}</>;
+  }
+
+  if (!isAuthenticated) {
     console.log('Usuário não autenticado, redirecionando...');
     return null;
   }

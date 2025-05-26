@@ -33,6 +33,17 @@ export async function POST(request: Request) {
     // Obter os dados do novo usuário do corpo da requisição
     const { email, full_name, company, is_super_admin } = await request.json();
 
+    // Verificar se o email já existe
+    const { data: existingUser } = await supabaseAdmin.auth.admin.listUsers({
+      perPage: 1,
+      page: 1
+    });
+
+    const userExists = existingUser?.users?.some(user => user.email === email);
+    if (userExists) {
+      return NextResponse.json({ error: 'Este email já está cadastrado' }, { status: 400 });
+    }
+
     // Criar o usuário usando o service_role
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
@@ -46,40 +57,62 @@ export async function POST(request: Request) {
     });
 
     if (authError) {
+      console.error('Erro ao criar usuário:', authError);
       return NextResponse.json({ error: authError.message }, { status: 400 });
     }
 
-    // Criar perfil do usuário
-    const { error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .insert([
-        {
-          id: authData.user.id,
-          email,
-          full_name,
-          company,
-          is_super_admin,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }
-      ]);
-
-    if (profileError) {
-      console.error('Erro ao criar perfil:', profileError);
-      return NextResponse.json({ error: 'Erro ao criar perfil do usuário' }, { status: 400 });
+    if (!authData.user) {
+      return NextResponse.json({ error: 'Erro ao criar usuário' }, { status: 400 });
     }
 
-    // Enviar magic link usando o método de convite
-    const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
-      data: {
-        needs_password_setup: true
+    // Atualizar o perfil criado automaticamente
+    const { error: updateError } = await supabaseAdmin
+      .from('profiles')
+      .update({
+        full_name,
+        company,
+        is_super_admin,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', authData.user.id);
+
+    if (updateError) {
+      console.error('Erro ao atualizar perfil:', updateError);
+      // Não retornamos erro aqui pois o usuário já foi criado
+    }
+
+    // Enviar magic link
+    const { error: magicLinkError } = await supabaseAdmin.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+        data: {
+          needs_password_setup: true,
+          full_name,
+          company,
+          is_super_admin
+        }
       }
     });
 
-    if (inviteError) {
-      console.error('Erro ao enviar convite:', inviteError);
-      return NextResponse.json({ error: inviteError.message }, { status: 400 });
+    if (magicLinkError) {
+      console.error('Erro ao enviar magic link:', magicLinkError);
+      // Tentar enviar novamente com um método alternativo
+      const { error: retryError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+        data: {
+          needs_password_setup: true,
+          full_name,
+          company,
+          is_super_admin
+        }
+      });
+
+      if (retryError) {
+        console.error('Erro ao enviar convite:', retryError);
+        // Não retornamos erro aqui pois o usuário já foi criado
+        // Apenas logamos o erro para debug
+      }
     }
 
     return NextResponse.json({ 
