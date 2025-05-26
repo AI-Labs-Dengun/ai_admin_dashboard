@@ -29,3 +29,5 @@ next-env.d.ts
 
 # Supabase
 schema_supabase.md
+
+sql/
