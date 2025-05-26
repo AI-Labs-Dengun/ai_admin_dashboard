@@ -26,7 +26,15 @@ function SetupPasswordContent() {
   useEffect(() => {
     const checkSession = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error('Erro ao obter sessão:', sessionError);
+          setError('Erro ao verificar sessão.');
+          router.push('/auth/signin');
+          return;
+        }
+
         if (!session) {
           setCanSetupPassword(false);
           router.push('/auth/signin');
@@ -40,12 +48,19 @@ function SetupPasswordContent() {
         }
 
         setCanSetupPassword(true);
+        
         // Carregar dados do usuário se existirem
-        const { data: profile } = await supabase
+        const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('full_name, phone')
           .eq('id', session.user.id)
           .single();
+        
+        if (profileError) {
+          console.error('Erro ao carregar perfil:', profileError);
+          setError('Erro ao carregar dados do perfil.');
+          return;
+        }
         
         if (profile) {
           setFullName(profile.full_name || '');
