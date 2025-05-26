@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { toast } from 'react-hot-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertTriangle } from 'lucide-react';
+import Link from 'next/link';
 
 export default function SignIn() {
   const [email, setEmail] = useState('');
@@ -41,14 +42,25 @@ export default function SignIn() {
       });
 
       if (signInError) {
-        throw signInError;
+        if (signInError.message.includes('rate limit')) {
+          setError('Muitas tentativas de login. Por favor, aguarde alguns minutos antes de tentar novamente.');
+          toast.error('Muitas tentativas de login. Aguarde alguns minutos.');
+        } else {
+          throw signInError;
+        }
+        return;
       }
 
       router.push('/dashboard');
     } catch (error: any) {
       console.error('Erro ao fazer login:', error);
-      setError(error.message || 'Erro ao fazer login');
-      toast.error('Erro ao fazer login');
+      if (error.message.includes('rate limit')) {
+        setError('Muitas tentativas de login. Por favor, aguarde alguns minutos antes de tentar novamente.');
+        toast.error('Muitas tentativas de login. Aguarde alguns minutos.');
+      } else {
+        setError(error.message || 'Erro ao fazer login');
+        toast.error('Erro ao fazer login');
+      }
     } finally {
       setLoading(false);
     }
@@ -102,6 +114,12 @@ export default function SignIn() {
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Entrando...' : 'Entrar'}
             </Button>
+            {/* <div className="text-sm text-center mt-4">
+              Não tem uma conta?{' '}
+              <Link href="/auth/signup" className="text-primary hover:underline">
+                Criar conta
+              </Link>
+            </div> */}
           </CardFooter>
         </form>
       </Card>
