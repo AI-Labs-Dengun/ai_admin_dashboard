@@ -15,26 +15,6 @@ interface CreateUserModalProps {
   onSuccess: () => Promise<void>;
 }
 
-// Função para gerar senha temporária segura
-function generateTemporaryPassword(length: number = 10): string {
-  const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
-  let password = '';
-  
-  // Garantir pelo menos um caractere de cada tipo
-  password += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)]; // Maiúscula
-  password += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)]; // Minúscula
-  password += '0123456789'[Math.floor(Math.random() * 10)]; // Número
-  password += '!@#$%^&*'[Math.floor(Math.random() * 8)]; // Caractere especial
-  
-  // Completar o resto da senha
-  for (let i = password.length; i < length; i++) {
-    password += charset[Math.floor(Math.random() * charset.length)];
-  }
-  
-  // Embaralhar a senha
-  return password.split('').sort(() => Math.random() - 0.5).join('');
-}
-
 export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
