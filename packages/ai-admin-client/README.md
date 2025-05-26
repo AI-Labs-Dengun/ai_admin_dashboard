@@ -40,20 +40,11 @@ MAX_TOKENS_PER_REQUEST=1000
 
 # Configurações do Dashboard
 DASHBOARD_URL="https://seu-dashboard.com"
+BOT_TOKEN="seu-token-jwt"  # Token de autenticação do bot
 
 # Configurações dos Tenants
-# Formato: TENANT_[ID]_TOKEN="seu-token-jwt"
-# Exemplo: TENANT_123_TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-TENANT_123_TOKEN="seu-token-jwt"
-TENANT_123_USER_ID="id-do-usuario"
-TENANT_123_MAX_TOKENS=1000
-TENANT_123_MAX_REQUESTS=1000
-
-# Você pode adicionar mais tenants seguindo o mesmo padrão
-TENANT_456_TOKEN="outro-token-jwt"
-TENANT_456_USER_ID="outro-usuario"
-TENANT_456_MAX_TOKENS=2000
-TENANT_456_MAX_REQUESTS=2000
+# As configurações dos tenants serão sincronizadas automaticamente
+# Não é necessário configurar manualmente
 ```
 
 ### 4. Estrutura Criada
@@ -65,11 +56,53 @@ dengun_ai-admin/
 ├── .env                 # Configurações do bot e tenants
 ├── config/
 │   └── bot.ts          # Configuração da conexão
+├── types/
+│   └── dengun_ai-admin-client.d.ts  # Declarações de tipos
+├── tests/
+│   └── connection.test.ts  # Teste de conexão
 └── examples/
     └── bot-usage.ts    # Exemplo de uso
 ```
 
-### 5. Uso do Cliente
+### 5. Teste de Conexão
+
+Para verificar se a configuração está correta e testar a conexão com o dashboard:
+
+```bash
+# 1. Navegue até a pasta do projeto
+cd dengun_ai-admin
+
+# 2. Instale as dependências necessárias
+npm install -D ts-node typescript @types/node dotenv
+
+# 3. Execute o teste de conexão usando o ts-node com as flags corretas
+npx ts-node --transpile-only --esm tests/connection.test.ts
+```
+
+Se você encontrar o erro "Unknown file extension .ts", tente uma destas alternativas:
+
+```bash
+# Alternativa 1: Usando ts-node com CommonJS
+npx ts-node --transpile-only tests/connection.test.ts
+
+# Alternativa 2: Compilando e executando
+npx tsc tests/connection.test.ts
+node tests/connection.test.js
+```
+
+O teste irá:
+- Verificar as configurações básicas
+- Tentar sincronizar os tenants
+- Mostrar o status de cada tenant encontrado
+- Exibir mensagens de erro detalhadas se algo der errado
+
+Se você encontrar algum erro, verifique:
+1. Se está no diretório correto (`dengun_ai-admin`)
+2. Se todas as dependências foram instaladas
+3. Se o arquivo `.env` está configurado corretamente
+4. Se o `BOT_TOKEN` e `DASHBOARD_URL` estão definidos
+
+### 6. Uso do Cliente
 
 1. Importe o `botConnection` em seu código:
 
@@ -84,7 +117,7 @@ async function main() {
   try {
     // Exemplo de uso com múltiplos tenants
     for (const [tenantId, connection] of Object.entries(botConnection)) {
-      console.log(`\nVerificando conexão para o tenant ${tenantId}...`);
+      console.log(`\\nVerificando conexão para o tenant ${tenantId}...`);
 
       // Verificar status da solicitação
       const requestStatus = await connection.checkRequestStatus();
@@ -122,28 +155,22 @@ if (specificConnection) {
 }
 ```
 
-### 6. Configuração do TypeScript (se necessário)
+### 7. Sincronização Automática
 
-Se você estiver usando TypeScript, adicione o seguinte ao seu `tsconfig.json`:
+O cliente mantém uma sincronização automática com o dashboard:
+- Atualiza as configurações dos tenants a cada 5 minutos
+- Atualiza o arquivo `.env` automaticamente
+- Gerencia a adição/remoção de tenants
+- Mantém as conexões atualizadas
 
-```json
-{
-  "compilerOptions": {
-    "paths": {
-      "dengun_ai-admin/*": ["./dengun_ai-admin/*"]
-    }
-  }
-}
-```
+### 8. Solução de Problemas
 
-## Solução de Problemas
-
-### Erros Comuns
+#### Erros Comuns
 
 1. **Erro de conexão com o dashboard**
    - Verifique se o `DASHBOARD_URL` está correto
    - Confirme se o dashboard está online
-   - Verifique se as credenciais dos tenants são válidas
+   - Verifique se o `BOT_TOKEN` está correto
 
 2. **Erro de configuração do bot**
    - Verifique se todas as variáveis de ambiente estão configuradas
@@ -155,63 +182,9 @@ Se você estiver usando TypeScript, adicione o seguinte ao seu `tsconfig.json`:
    - Confirme se o TypeScript está configurado corretamente
    - Verifique se todos os arquivos foram criados na pasta `dengun_ai-admin`
 
-## Fluxo de Integração
-1. Ao instalar o pacote, uma solicitação automática é enviada ao AI Admin Dashboard
-2. O super admin do AI Admin Dashboard recebe a solicitação e pode aprovar ou recusar
-3. Se recusado, o bot pode tentar novamente até 5 vezes
-4. Se aprovado, o bot recebe acesso ao sistema e pode começar a operar
-5. O dashboard pode ativar/desativar bots, definir limites e monitorar o uso
-6. O pacote renova tokens automaticamente e bloqueia acesso se o admin revogar permissões
-
-## Segurança
-- Tokens JWT com expiração de 10 minutos
-- Renovação automática de tokens
-- Validação de permissões por bot
-- Controle de acesso por tenant
-
-## Tipos
-
-```typescript
-interface BotConfig {
-  baseUrl: string;
-  botName: string;
-  botDescription: string;
-  botCapabilities: string[];
-  contactEmail: string;
-  website?: string;
-  maxTokensPerRequest: number;
-}
-
-interface TenantConfig {
-  token: string;
-  userId: string;
-  limits: {
-    maxTokensPerRequest: number;
-    maxRequestsPerDay: number;
-  };
-}
-
-interface BotAccess {
-  botId: string;
-  enabled: boolean;
-}
-
-interface TokenUsage {
-  totalTokens: number;
-  lastUsed: Date;
-  botId: string;
-}
-
-interface BotConnectionStatus {
-  isConnected: boolean;
-  lastPing?: Date;
-  error?: string;
-}
-```
-
-## Contribuição
+### 9. Contribuição
 - Para contribuir, faça um fork, crie uma branch e envie um pull request.
 - Siga o versionamento semântico (semver) para novas versões.
 
-## Licença
+### 10. Licença
 ISC
