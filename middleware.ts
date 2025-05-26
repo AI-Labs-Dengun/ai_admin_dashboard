@@ -11,11 +11,11 @@ export async function middleware(req: NextRequest) {
       data: { session },
     } = await supabase.auth.getSession();
 
-    // Redirecionar tentativas de acesso ao signup
-    if (req.nextUrl.pathname === '/auth/signup') {
-      console.log('Tentativa de acesso ao signup desativado');
-      return NextResponse.redirect(new URL('/auth/signin', req.url));
-    }
+    // Redirecionar tentativas de acesso ao signup -- COMENTAR ESSA LINHA PARA DESATIVAR O SIGNUP
+    // if (req.nextUrl.pathname === '/auth/signup') {
+    //   console.log('Tentativa de acesso ao signup desativado');
+    //   return NextResponse.redirect(new URL('/auth/signin', req.url));
+    // }
 
     // Lista de rotas protegidas que requerem autenticação
     const protectedRoutes = ['/dashboard', '/profile', '/settings'];

@@ -5,8 +5,8 @@
  * Para reativar, remova os comentários deste arquivo
  */
 
-/*
-import { useState } from 'react';
+
+import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -28,6 +28,16 @@ export default function SignUp() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const supabase = createClientComponentClient();
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        router.push('/dashboard');
+      }
+    };
+    checkSession();
+  }, [router, supabase]);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,63 +74,65 @@ export default function SignUp() {
         throw signUpError;
       }
 
-      if (authData.user) {
-        console.log('Usuário criado:', authData.user);
-
-        // Criar perfil diretamente na tabela profiles
-        const { data: profileData, error: profileError } = await supabase
-          .from('profiles')
-          .insert([
-            {
-              id: authData.user.id,
-              email: email,
-              full_name: fullName,
-              company: company,
-              is_super_admin: true,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            }
-          ])
-          .select()
-          .single();
-
-        if (profileError) {
-          console.error('Erro ao criar perfil:', profileError);
-          throw profileError;
-        }
-
-        console.log('Perfil criado:', profileData);
-
-        // Verificar se o perfil foi criado corretamente
-        const { data: verifyProfile, error: verifyError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', authData.user.id)
-          .single();
-
-        if (verifyError) {
-          console.error('Erro ao verificar perfil:', verifyError);
-          throw verifyError;
-        }
-
-        console.log('Perfil verificado:', verifyProfile);
-
-        // Fazer login automaticamente após criar a conta
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-        if (signInError) {
-          console.error('Erro ao fazer login automático:', signInError);
-          toast.error('Erro ao fazer login automático. Por favor, faça login manualmente.');
-          router.push('/auth/signin');
-        } else {
-          console.log('Login automático realizado:', signInData);
-          toast.success('Conta criada com sucesso!');
-          router.push('/dashboard');
-        }
+      if (!authData.user) {
+        throw new Error('Erro ao criar usuário');
       }
+
+      // Criar perfil diretamente na tabela profiles
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert([
+          {
+            id: authData.user.id,
+            email: email,
+            full_name: fullName,
+            company: company,
+            is_super_admin: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }
+        ]);
+
+      if (profileError) {
+        console.error('Erro ao criar perfil:', profileError);
+        throw profileError;
+      }
+
+      // Verificar se o perfil foi criado corretamente
+      const { data: verifyProfile, error: verifyError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authData.user.id)
+        .single();
+
+      if (verifyError || !verifyProfile) {
+        console.error('Erro ao verificar perfil:', verifyError);
+        throw new Error('Erro ao verificar perfil');
+      }
+
+      // Fazer login automaticamente após criar a conta
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) {
+        console.error('Erro ao fazer login automático:', signInError);
+        toast.error('Conta criada com sucesso! Por favor, faça login manualmente.');
+        router.push('/auth/signin');
+        return;
+      }
+
+      // Verificar se a sessão foi criada
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Erro ao criar sessão');
+      }
+
+      toast.success('Conta criada com sucesso!');
+      router.push('/dashboard');
+      router.refresh(); // Força a atualização da página
+
     } catch (error: any) {
       console.error('Erro ao criar conta:', error);
       setError(error.message || 'Erro ao criar conta');
@@ -225,20 +237,20 @@ export default function SignUp() {
     </div>
   );
 }
-*/
 
-// Página temporariamente desativada
-export default function SignUp() {
-  return (
-    <div className="flex min-h-screen items-center justify-center">
-      <Card className="w-[400px]">
-        <CardHeader>
-          <CardTitle>Sistema de Cadastro Desativado</CardTitle>
-          <CardDescription>
-            O sistema de cadastro está temporariamente indisponível.
-          </CardDescription>
-        </CardHeader>
-      </Card>
-    </div>
-  );
-} 
+
+// // Página temporariamente desativada
+// export default function SignUp() {
+//   return (
+//     <div className="flex min-h-screen items-center justify-center">
+//       <Card className="w-[400px]">
+//         <CardHeader>
+//           <CardTitle>Sistema de Cadastro Desativado</CardTitle>
+//           <CardDescription>
+//             O sistema de cadastro está temporariamente indisponível.
+//           </CardDescription>
+//         </CardHeader>
+//       </Card>
+//     </div>
+//   );
+// } 

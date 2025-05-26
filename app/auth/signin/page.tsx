@@ -110,16 +110,23 @@ export default function SignIn() {
               />
             </div>
           </CardContent>
-          <CardFooter>
+          <CardFooter className="flex flex-col space-y-4">
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Entrando...' : 'Entrar'}
             </Button>
-            {/* <div className="text-sm text-center mt-4">
+            <div className="text-sm text-center w-full">
               Não tem uma conta?{' '}
-              <Link href="/auth/signup" className="text-primary hover:underline">
+              <Link 
+                href="/auth/signup" 
+                className="text-primary hover:underline font-medium"
+                onClick={(e) => {
+                  e.preventDefault();
+                  router.push('/auth/signup');
+                }}
+              >
                 Criar conta
               </Link>
-            </div> */}
+            </div>
           </CardFooter>
         </form>
       </Card>
