@@ -8,6 +8,19 @@ Cliente para integração com o AI Admin Dashboard, permitindo que bots externos
 npm install dengun_ai-admin-client
 ```
 
+## Configuração do Bot
+
+Antes de usar o cliente, você precisa configurar algumas variáveis de ambiente:
+
+```bash
+BOT_NAME="Nome do seu bot"
+BOT_DESCRIPTION="Descrição detalhada do seu bot"
+BOT_CAPABILITIES="chat,image-generation,text-analysis"
+BOT_CONTACT_EMAIL="seu@email.com"
+BOT_WEBSITE="https://seu-bot.com"
+MAX_TOKENS_PER_REQUEST=1000
+```
+
 ## Como Usar em Outra Aplicação
 
 ```typescript
@@ -24,24 +37,33 @@ const botConfig = {
 // Criar conexão
 const botConnection = createBotConnection(botConfig);
 
-// Verificar status da conexão
-const status = await botConnection.ping();
-console.log('Status da conexão:', status);
+// Verificar status da solicitação
+const requestStatus = await botConnection.checkRequestStatus();
+console.log('Status da solicitação:', requestStatus);
 
-// Obter acesso aos bots
-const botAccess = await botConnection.getBotAccess();
-console.log('Bots disponíveis:', botAccess);
+// Se aprovado, você pode usar os outros métodos
+if (requestStatus.status === 'approved') {
+  // Verificar status da conexão
+  const status = await botConnection.ping();
+  console.log('Status da conexão:', status);
 
-// Obter uso de tokens
-const tokenUsage = await botConnection.getTokenUsage();
-console.log('Uso de tokens:', tokenUsage);
+  // Obter acesso aos bots
+  const botAccess = await botConnection.getBotAccess();
+  console.log('Bots disponíveis:', botAccess);
+
+  // Obter uso de tokens
+  const tokenUsage = await botConnection.getTokenUsage();
+  console.log('Uso de tokens:', tokenUsage);
+}
 ```
 
 ## Fluxo de Integração
-1. O super admin do AI Admin Dashboard cria o usuário e gera o token JWT.
-2. O desenvolvedor da app externa recebe o token e configura o pacote conforme o exemplo acima.
-3. O dashboard pode ativar/desativar bots, definir limites e monitorar o uso.
-4. O pacote renova tokens automaticamente e bloqueia acesso se o admin revogar permissões.
+1. Ao instalar o pacote, uma solicitação automática é enviada ao AI Admin Dashboard
+2. O super admin do AI Admin Dashboard recebe a solicitação e pode aprovar ou recusar
+3. Se recusado, o bot pode tentar novamente até 5 vezes
+4. Se aprovado, o bot recebe acesso ao sistema e pode começar a operar
+5. O dashboard pode ativar/desativar bots, definir limites e monitorar o uso
+6. O pacote renova tokens automaticamente e bloqueia acesso se o admin revogar permissões
 
 ## Manutenção e Versionamento
 

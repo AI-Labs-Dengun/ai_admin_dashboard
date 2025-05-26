@@ -31,4 +31,30 @@ export interface BotConnectionStatus {
   isConnected: boolean;
   lastPing?: Date;
   error?: string;
+}
+
+export interface BotRequest {
+  botName: string;
+  botDescription: string;
+  botVersion: string;
+  botCapabilities: string[];
+  contactEmail: string;
+  website?: string;
+  maxTokensPerRequest?: number;
+}
+
+export interface BotRequestResponse {
+  requestId: string;
+  status: 'pending' | 'approved' | 'rejected';
+  attempts: number;
+  message?: string;
+}
+
+export interface BotRegistration {
+  botId: string;
+  tenantId: string;
+  status: 'active' | 'inactive';
+  tokenLimit: number;
+  createdAt: Date;
+  updatedAt: Date;
 } 
