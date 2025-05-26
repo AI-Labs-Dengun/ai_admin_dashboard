@@ -48,6 +48,7 @@ const createConfigFile = () => {
   const configContent = `import { createBotConnection } from 'dengun_ai-admin-client';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 
 // Carrega as variáveis de ambiente
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
@@ -63,42 +64,147 @@ const botConfig = {
   maxTokensPerRequest: parseInt(process.env.MAX_TOKENS_PER_REQUEST || '1000')
 };
 
-// Função para obter todos os tenants configurados
-const getTenantConfigs = (): { [key: string]: any } => {
-  const tenantConfigs: { [key: string]: any } = {};
-  const envVars = process.env;
+// Classe para gerenciar a sincronização dos tenants
+class TenantSyncManager {
+  private static instance: TenantSyncManager;
+  private syncInterval: NodeJS.Timeout | null = null;
+  private tenantConnections: { [key: string]: any } = {};
+  private lastSync: { [key: string]: number } = {};
 
-  // Procura por variáveis de ambiente que começam com TENANT_
-  Object.keys(envVars).forEach(key => {
-    if (key.startsWith('TENANT_') && key.endsWith('_TOKEN')) {
-      const tenantId = key.replace('TENANT_', '').replace('_TOKEN', '');
-      tenantConfigs[tenantId] = {
-        token: envVars[key],
-        userId: envVars[\`TENANT_\${tenantId}_USER_ID\`] || '',
-        limits: {
-          maxTokensPerRequest: parseInt(envVars[\`TENANT_\${tenantId}_MAX_TOKENS\`] || '1000'),
-          maxRequestsPerDay: parseInt(envVars[\`TENANT_\${tenantId}_MAX_REQUESTS\`] || '1000')
-        }
-      };
+  private constructor() {
+    this.startSync();
+  }
+
+  public static getInstance(): TenantSyncManager {
+    if (!TenantSyncManager.instance) {
+      TenantSyncManager.instance = new TenantSyncManager();
     }
-  });
+    return TenantSyncManager.instance;
+  }
 
-  return tenantConfigs;
-};
+  public async syncTenants() {
+    try {
+      // Buscar lista atualizada de tenants do dashboard
+      const response = await fetch(\`\${botConfig.baseUrl}/api/bots/tenants\`, {
+        headers: {
+          'Authorization': \`Bearer \${process.env.BOT_TOKEN}\`
+        }
+      });
 
-// Criar conexões para cada tenant
-const tenantConnections = Object.entries(getTenantConfigs()).reduce((acc, [tenantId, config]) => {
-  acc[tenantId] = createBotConnection({
-    ...botConfig,
-    token: config.token,
-    userId: config.userId,
-    tenantId
-  });
-  return acc;
-}, {} as { [key: string]: any });
+      if (!response.ok) {
+        throw new Error('Falha ao buscar tenants');
+      }
 
-export const botConnection = tenantConnections;
-export const getTenantConnection = (tenantId: string) => tenantConnections[tenantId];
+      const tenants = await response.json();
+      
+      // Atualizar conexões
+      for (const tenant of tenants) {
+        const tenantId = tenant.id;
+        
+        // Verificar se o tenant já existe e se precisa ser atualizado
+        if (!this.tenantConnections[tenantId] || 
+            this.lastSync[tenantId] < tenant.updatedAt) {
+          
+          // Criar ou atualizar conexão
+          this.tenantConnections[tenantId] = createBotConnection({
+            ...botConfig,
+            token: tenant.token,
+            userId: tenant.userId,
+            tenantId: tenant.id
+          });
+
+          this.lastSync[tenantId] = Date.now();
+          
+          // Atualizar arquivo .env com as novas informações
+          this.updateEnvFile(tenant);
+        }
+      }
+
+      // Remover tenants que não existem mais
+      for (const tenantId of Object.keys(this.tenantConnections)) {
+        if (!tenants.find((t: any) => t.id === tenantId)) {
+          delete this.tenantConnections[tenantId];
+          delete this.lastSync[tenantId];
+          this.removeTenantFromEnv(tenantId);
+        }
+      }
+    } catch (error) {
+      console.error('Erro na sincronização dos tenants:', error);
+      throw error;
+    }
+  }
+
+  private updateEnvFile(tenant: any) {
+    const envPath = path.join(__dirname, '..', '.env');
+    let envContent = fs.readFileSync(envPath, 'utf-8');
+
+    // Atualizar ou adicionar variáveis do tenant
+    const tenantVars = [
+      \`TENANT_\${tenant.id}_TOKEN="\${tenant.token}"\`,
+      \`TENANT_\${tenant.id}_USER_ID="\${tenant.userId}"\`,
+      \`TENANT_\${tenant.id}_MAX_TOKENS=\${tenant.maxTokens}\`,
+      \`TENANT_\${tenant.id}_MAX_REQUESTS=\${tenant.maxRequests}\`
+    ];
+
+    for (const var_ of tenantVars) {
+      const [key] = var_.split('=');
+      const regex = new RegExp(\`^\${key}.*$\`, 'm');
+      
+      if (envContent.match(regex)) {
+        envContent = envContent.replace(regex, var_);
+      } else {
+        envContent += \`\\n\${var_}\`;
+      }
+    }
+
+    fs.writeFileSync(envPath, envContent);
+  }
+
+  private removeTenantFromEnv(tenantId: string) {
+    const envPath = path.join(__dirname, '..', '.env');
+    let envContent = fs.readFileSync(envPath, 'utf-8');
+
+    // Remover todas as variáveis do tenant
+    const regex = new RegExp(\`^TENANT_\${tenantId}_.*$\`, 'gm');
+    envContent = envContent.replace(regex, '').replace(/\\n\\n+/g, '\\n');
+
+    fs.writeFileSync(envPath, envContent);
+  }
+
+  public startSync(interval = 5 * 60 * 1000) { // 5 minutos por padrão
+    if (this.syncInterval) {
+      clearInterval(this.syncInterval);
+    }
+    
+    // Sincronização inicial
+    this.syncTenants();
+    
+    // Configurar sincronização periódica
+    this.syncInterval = setInterval(() => this.syncTenants(), interval);
+  }
+
+  public stopSync() {
+    if (this.syncInterval) {
+      clearInterval(this.syncInterval);
+      this.syncInterval = null;
+    }
+  }
+
+  public getConnections() {
+    return this.tenantConnections;
+  }
+
+  public getConnection(tenantId: string) {
+    return this.tenantConnections[tenantId];
+  }
+}
+
+// Exportar instância do gerenciador de sincronização
+export const tenantSync = TenantSyncManager.getInstance();
+
+// Exportar conexões para compatibilidade com código existente
+export const botConnection = tenantSync.getConnections();
+export const getTenantConnection = (tenantId: string) => tenantSync.getConnection(tenantId);
 `;
 
   const configDir = path.join(process.cwd(), PACKAGE_DIR, 'config');
@@ -176,6 +282,149 @@ main();
   }
 };
 
+const createTestFile = () => {
+  const testContent = `import { botConnection, getTenantConnection, tenantSync } from '../config/bot';
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Carrega as variáveis de ambiente
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
+
+async function testConnection() {
+  try {
+    console.log('🧪 Iniciando teste de conexão...');
+    console.log('📋 Verificando configurações...');
+    
+    // Verificar se o BOT_TOKEN está configurado
+    if (!process.env.BOT_TOKEN) {
+      console.error('❌ BOT_TOKEN não encontrado no arquivo .env');
+      console.log('⚠️ Adicione a seguinte linha ao seu arquivo .env:');
+      console.log('BOT_TOKEN="seu-token-jwt"');
+      return;
+    }
+
+    // Verificar se o DASHBOARD_URL está configurado
+    if (!process.env.DASHBOARD_URL) {
+      console.error('❌ DASHBOARD_URL não encontrado no arquivo .env');
+      console.log('⚠️ Adicione a seguinte linha ao seu arquivo .env:');
+      console.log('DASHBOARD_URL="https://seu-dashboard.com"');
+      return;
+    }
+
+    console.log('✅ Configurações básicas verificadas');
+    
+    // Testar sincronização de tenants
+    console.log('\\n🔄 Testando sincronização de tenants...');
+    try {
+      await tenantSync.syncTenants();
+      const connections = tenantSync.getConnections();
+      
+      if (Object.keys(connections).length === 0) {
+        console.log('⚠️ Nenhum tenant encontrado');
+        console.log('ℹ️ Aguarde o Super Admin associar um tenant ao seu bot no dashboard');
+        return;
+      }
+
+      console.log('✅ Tenants sincronizados:', Object.keys(connections));
+      
+      // Mostrar detalhes de cada tenant
+      for (const [tenantId, connection] of Object.entries(connections)) {
+        console.log(\`\\n📋 Detalhes do Tenant \${tenantId}:\`);
+        
+        // Verificar status da solicitação
+        console.log('📡 Verificando status da solicitação...');
+        const requestStatus = await connection.checkRequestStatus();
+        console.log('Status da solicitação:', requestStatus.status);
+
+        if (requestStatus.status === 'approved') {
+          // Verificar status da conexão
+          console.log('📡 Verificando status da conexão...');
+          const status = await connection.ping();
+          console.log('Status da conexão:', status ? '✅ Conectado' : '❌ Desconectado');
+
+          // Obter acesso aos bots
+          console.log('📡 Obtendo acesso aos bots...');
+          const botAccess = await connection.getBotAccess();
+          console.log('Bots disponíveis:', botAccess);
+
+          // Obter uso de tokens
+          console.log('📡 Obtendo uso de tokens...');
+          const tokenUsage = await connection.getTokenUsage();
+          console.log('Uso de tokens:', tokenUsage);
+        } else {
+          console.log('⚠️ Bot ainda não foi aprovado para este tenant');
+          console.log('ℹ️ Aguarde a aprovação do Super Admin no dashboard');
+        }
+      }
+    } catch (error) {
+      console.error('❌ Erro durante a sincronização:', error);
+      console.log('\\n🔍 Possíveis soluções:');
+      console.log('1. Verifique se o BOT_TOKEN está correto');
+      console.log('2. Verifique se o DASHBOARD_URL está correto');
+      console.log('3. Verifique se o dashboard está online');
+      console.log('4. Verifique se o bot foi registrado no dashboard');
+    }
+  } catch (error) {
+    console.error('❌ Erro durante o teste:', error);
+  }
+}
+
+// Executar o teste
+console.log('🚀 Iniciando teste de conexão do bot...');
+testConnection().then(() => {
+  console.log('\\n✨ Teste concluído!');
+});`;
+
+  const testDir = path.join(process.cwd(), PACKAGE_DIR, 'tests');
+  const testPath = path.join(testDir, 'connection.test.ts');
+
+  if (!fs.existsSync(testDir)) {
+    fs.mkdirSync(testDir, { recursive: true });
+  }
+
+  if (!fs.existsSync(testPath)) {
+    fs.writeFileSync(testPath, testContent);
+    console.log('✅ Arquivo de teste criado com sucesso!');
+  } else {
+    console.log('ℹ️ Arquivo de teste já existe. Mantendo configurações existentes.');
+  }
+};
+
+const createTypesFile = () => {
+  const typesContent = `declare module 'dengun_ai-admin-client' {
+  export function createBotConnection(config: {
+    baseUrl: string;
+    token: string;
+    userId: string;
+    tenantId: string;
+    botName?: string;
+    botDescription?: string;
+    botCapabilities?: string[];
+    contactEmail?: string;
+    website?: string;
+    maxTokensPerRequest?: number;
+  }): {
+    sendMessage: (message: string) => Promise<any>;
+    getHistory: () => Promise<any>;
+    disconnect: () => void;
+  };
+}`;
+
+  const typesDir = path.join(process.cwd(), PACKAGE_DIR, 'types');
+  const typesPath = path.join(typesDir, 'dengun_ai-admin-client.d.ts');
+
+  if (!fs.existsSync(typesDir)) {
+    fs.mkdirSync(typesDir, { recursive: true });
+  }
+
+  if (!fs.existsSync(typesPath)) {
+    fs.writeFileSync(typesPath, typesContent);
+    console.log('✅ Arquivo de tipos criado com sucesso!');
+  } else {
+    console.log('ℹ️ Arquivo de tipos já existe. Mantendo configurações existentes.');
+  }
+};
+
 const main = async () => {
   try {
     console.log('🚀 Iniciando configuração do dengun_ai-admin-client...');
@@ -190,18 +439,36 @@ const main = async () => {
     await createEnvFile('https://seu-dashboard.com');
     createConfigFile();
     createExampleFile();
+    createTestFile();
+    createTypesFile();
 
     console.log('\n🎉 Configuração concluída com sucesso!');
-    console.log('\nPróximos passos:');
-    console.log(`1. Edite o arquivo ${PACKAGE_DIR}/.env com suas configurações`);
-    console.log('2. Para cada tenant, adicione as seguintes variáveis:');
-    console.log('   TENANT_[ID]_TOKEN="seu-token-jwt"');
-    console.log('   TENANT_[ID]_USER_ID="id-do-usuario"');
-    console.log('   TENANT_[ID]_MAX_TOKENS=1000');
-    console.log('   TENANT_[ID]_MAX_REQUESTS=1000');
-    console.log('3. Importe e use o botConnection em seu código:');
-    console.log(`   import { botConnection, getTenantConnection } from './${PACKAGE_DIR}/config/bot';`);
-    console.log(`4. Verifique o exemplo em ${PACKAGE_DIR}/examples/bot-usage.ts`);
+    console.log('\n📋 Próximos passos:');
+    console.log(`1. Edite o arquivo ${PACKAGE_DIR}/.env com suas configurações:`);
+    console.log('   BOT_TOKEN="seu-token-jwt"');
+    console.log('   DASHBOARD_URL="https://seu-dashboard.com"');
+    console.log('   BOT_NAME="Nome do seu bot"');
+    console.log('   BOT_DESCRIPTION="Descrição do seu bot"');
+    console.log('   BOT_CAPABILITIES="chat,image-generation,text-analysis"');
+    console.log('   BOT_CONTACT_EMAIL="seu@email.com"');
+    console.log('   BOT_WEBSITE="https://seu-bot.com"');
+    console.log('   MAX_TOKENS_PER_REQUEST=1000');
+    
+    console.log('\n🔍 Para testar a conexão:');
+    console.log('1. Instale as dependências necessárias:');
+    console.log('   npm install -D ts-node typescript @types/node');
+    console.log('2. Execute o teste de conexão:');
+    console.log(`   npx ts-node ${PACKAGE_DIR}/tests/connection.test.ts`);
+    
+    console.log('\n📚 Recursos disponíveis:');
+    console.log(`- Exemplo de uso: ${PACKAGE_DIR}/examples/bot-usage.ts`);
+    console.log(`- Teste de conexão: ${PACKAGE_DIR}/tests/connection.test.ts`);
+    console.log(`- Configuração do bot: ${PACKAGE_DIR}/config/bot.ts`);
+    
+    console.log('\n⚠️ Importante:');
+    console.log('- Aguarde a aprovação do bot no dashboard após a primeira conexão');
+    console.log('- Monitore o status da conexão regularmente');
+    console.log('- Verifique os logs para identificar possíveis problemas');
   } catch (error) {
     console.error('❌ Erro durante a configuração:', error);
     process.exit(1);
