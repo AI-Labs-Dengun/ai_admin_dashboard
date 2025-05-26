@@ -12,8 +12,13 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "lib": ["es2018", "dom"],
-    "types": ["node", "jest"]
+    "types": ["node", "jest"],
+    "allowJs": true,
+    "baseUrl": ".",
+    "paths": {
+      "*": ["node_modules/*"]
+    }
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  "include": ["src/**/*", "tests/**/*"],
+  "exclude": ["node_modules", "dist"]
 } 
