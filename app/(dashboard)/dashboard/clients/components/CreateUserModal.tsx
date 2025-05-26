@@ -131,33 +131,22 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
         return;
       }
 
-      // Criar o usuário no auth (fluxo padrão Supabase)
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: newUser.email,
-        password: Math.random().toString(36).slice(-8), // senha aleatória
-        options: {
-          data: {
-            full_name: newUser.full_name,
-            company: newUser.company,
-            is_super_admin: newUser.is_super_admin
-          },
-          emailRedirectTo: process.env.NODE_ENV === 'production'
-            ? 'https://ai-admin-dashboard-git-dev-ai-denguns-projects.vercel.app/auth/callback'
-            : `${window.location.origin}/auth/callback`
-        }
+      // Criar usuário através da API
+      const response = await fetch('/dashboard/clients/api/create-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newUser),
       });
 
-      if (authError) {
-        console.error('Erro ao criar usuário:', authError);
-        toast.error('Erro ao criar usuário. Tente novamente.');
-        return;
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao criar usuário');
       }
 
-      if (!authData.user) {
-        throw new Error('Não foi possível criar o usuário');
-      }
-
-      toast.success('Usuário criado com sucesso! Um email foi enviado para confirmação e definição de senha.');
+      toast.success('Usuário criado com sucesso! Um email com magic link foi enviado.');
       
       // Limpar o formulário
       setNewUser({
@@ -171,9 +160,9 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
       
       await onSuccess();
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao criar usuário:', error);
-      toast.error('Erro ao criar usuário');
+      toast.error(error.message || 'Erro ao criar usuário');
     } finally {
       setIsSaving(false);
     }
