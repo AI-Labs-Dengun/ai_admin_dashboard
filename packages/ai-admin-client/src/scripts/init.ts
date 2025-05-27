@@ -262,8 +262,7 @@ export const tenantSync = TenantSyncManager.getInstance();
 
 // Exportar conexões para compatibilidade com código existente
 export const botConnection = tenantSync.getConnections();
-export const getTenantConnection = (tenantId: string) => tenantSync.getConnection(tenantId);
-`;
+export const getTenantConnection = (tenantId: string) => tenantSync.getConnection(tenantId);`;
 
   const configDir = path.join(process.cwd(), PACKAGE_DIR, 'config');
   const configPath = path.join(configDir, 'bot.ts');
@@ -450,37 +449,52 @@ testConnection().then(() => {
 
 const main = async () => {
   try {
-    console.log('🚀 Iniciando configuração do dengun_ai-admin-client...');
+    console.log('\n🚀 Iniciando configuração do dengun_ai-admin-client...\n');
 
     // Criar pasta principal
     const packageDir = path.join(process.cwd(), PACKAGE_DIR);
     if (!fs.existsSync(packageDir)) {
       fs.mkdirSync(packageDir, { recursive: true });
+      console.log('📁 Criando pasta principal...');
     }
 
     // Criar arquivos de configuração
+    console.log('\n📝 Criando arquivos de configuração...');
     await createEnvFile('http://localhost:3000');
     createConfigFile();
     createExampleFile();
     createTestFile();
 
-    console.log('\n🎉 Configuração concluída com sucesso!');
+    console.log('\n✨ Configuração concluída com sucesso!');
     console.log('\n📋 Próximos passos:');
-    console.log(`1. Edite o arquivo ${PACKAGE_DIR}/.env com suas configurações:`);
-    console.log('   BOT_TOKEN="seu-token-jwt"');
-    console.log('   DASHBOARD_URL="https://seu-dashboard.com"');
+    console.log('\n1️⃣ Instale as dependências necessárias:');
+    console.log('   npm install -D ts-node typescript @types/node dotenv axios');
+    
+    console.log('\n2️⃣ Configure o arquivo .env:');
+    console.log(`   Edite o arquivo ${PACKAGE_DIR}/.env com suas configurações:`);
     console.log('   BOT_NAME="Nome do seu bot"');
     console.log('   BOT_DESCRIPTION="Descrição do seu bot"');
     console.log('   BOT_CAPABILITIES="chat,image-generation,text-analysis"');
     console.log('   BOT_CONTACT_EMAIL="seu@email.com"');
     console.log('   BOT_WEBSITE="https://seu-bot.com"');
     console.log('   MAX_TOKENS_PER_REQUEST=1000');
+    console.log('   DASHBOARD_URL="https://seu-dashboard.com"');
     
-    console.log('\n🔍 Para testar a conexão:');
-    console.log('1. Instale as dependências necessárias:');
-    console.log('   npm install -D ts-node typescript @types/node dotenv');
-    console.log('2. Execute o teste de conexão:');
+    console.log('\n3️⃣ Envie a solicitação de conexão:');
+    console.log('   Execute o comando:');
+    console.log('   npx -p dengun_ai-admin-client dengun-ai-register');
+    console.log('\n   Este comando irá:');
+    console.log('   - Verificar suas configurações');
+    console.log('   - Enviar a solicitação para o dashboard');
+    console.log('   - Salvar o token recebido no .env');
+    
+    console.log('\n4️⃣ Teste a conexão:');
+    console.log('   Execute o teste de conexão:');
     console.log(`   npx ts-node ${PACKAGE_DIR}/tests/connection.test.ts`);
+    console.log('\n   O teste irá:');
+    console.log('   - Verificar as configurações básicas');
+    console.log('   - Tentar sincronizar os tenants');
+    console.log('   - Mostrar o status de cada tenant');
     
     console.log('\n📚 Recursos disponíveis:');
     console.log(`- Exemplo de uso: ${PACKAGE_DIR}/examples/bot-usage.ts`);
@@ -491,8 +505,13 @@ const main = async () => {
     console.log('- Aguarde a aprovação do bot no dashboard após a primeira conexão');
     console.log('- Monitore o status da conexão regularmente');
     console.log('- Verifique os logs para identificar possíveis problemas');
+    
+    console.log('\n❓ Precisa de ajuda?');
+    console.log('Consulte a documentação em:');
+    console.log('https://github.com/dengun/ai-admin-dashboard');
+    
   } catch (error) {
-    console.error('❌ Erro durante a configuração:', error);
+    console.error('\n❌ Erro durante a configuração:', error);
     process.exit(1);
   }
 };
