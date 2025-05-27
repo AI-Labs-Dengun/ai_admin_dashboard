@@ -25,11 +25,16 @@ import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { checkUserPermissions } from "@/app/(dashboard)/dashboard/lib/authManagement";
+import { BotDetailsModal } from "./components/BotDetailsModal";
 
 interface Bot {
   id: string;
   name: string;
   description: string | null;
+  bot_capabilities: string[];
+  contact_email: string | null;
+  website: string | null;
+  max_tokens_per_request: number;
   created_at: string;
 }
 
@@ -39,6 +44,8 @@ export default function BotsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedBot, setSelectedBot] = useState<Bot | null>(null);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const { supabase } = useSupabase();
   const router = useRouter();
@@ -142,6 +149,15 @@ export default function BotsPage() {
     }
   };
 
+  const handleViewDetails = (bot: Bot) => {
+    setSelectedBot(bot);
+    setIsDetailsModalOpen(true);
+  };
+
+  const handleBotUpdate = () => {
+    loadBots();
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -219,9 +235,14 @@ export default function BotsPage() {
               </CardHeader>
               <CardContent>
                 <div className="flex justify-end space-x-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => handleViewDetails(bot)}
+                  >
+                    Ver Detalhes
+                  </Button>
                   {isSuperAdmin && (
                     <>
-                      <Button variant="outline">Editar</Button>
                       <Button
                         variant="destructive"
                         onClick={() => handleDeleteBot(bot.id)}
@@ -236,6 +257,13 @@ export default function BotsPage() {
           ))}
         </div>
       )}
+
+      <BotDetailsModal
+        isOpen={isDetailsModalOpen}
+        onClose={() => setIsDetailsModalOpen(false)}
+        bot={selectedBot}
+        onSuccess={handleBotUpdate}
+      />
     </div>
   );
 } 
