@@ -78,60 +78,27 @@ export default function SignUp() {
         throw new Error('Erro ao criar usuário');
       }
 
-      // Criar perfil diretamente na tabela profiles
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert([
-          {
-            id: authData.user.id,
-            email: email,
-            full_name: fullName,
-            company: company,
-            is_super_admin: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }
-        ]);
-
-      if (profileError) {
-        console.error('Erro ao criar perfil:', profileError);
-        throw profileError;
-      }
-
-      // Verificar se o perfil foi criado corretamente
-      const { data: verifyProfile, error: verifyError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', authData.user.id)
-        .single();
-
-      if (verifyError || !verifyProfile) {
-        console.error('Erro ao verificar perfil:', verifyError);
-        throw new Error('Erro ao verificar perfil');
-      }
-
-      // Fazer login automaticamente após criar a conta
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      // Criar perfil através da API route
+      const response = await fetch('/api/auth/create-profile', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: authData.user.id,
+          email,
+          fullName,
+          company
+        }),
       });
 
-      if (signInError) {
-        console.error('Erro ao fazer login automático:', signInError);
-        toast.error('Conta criada com sucesso! Por favor, faça login manualmente.');
-        router.push('/auth/signin');
-        return;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Erro ao criar perfil');
       }
 
-      // Verificar se a sessão foi criada
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('Erro ao criar sessão');
-      }
-
-      toast.success('Conta criada com sucesso!');
-      router.push('/dashboard');
-      router.refresh(); // Força a atualização da página
+      toast.success('Conta criada com sucesso! Por favor, verifique seu email para confirmar sua conta.');
+      router.push('/auth/signin');
 
     } catch (error: any) {
       console.error('Erro ao criar conta:', error);
