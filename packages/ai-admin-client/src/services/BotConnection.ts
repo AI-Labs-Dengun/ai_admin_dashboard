@@ -80,7 +80,7 @@ export class BotConnection {
     }
 
     try {
-      const response = await this.client.get<BotRequestResponse>(`/api/bots/request/${this.botRequestStatus.requestId}`);
+      const response = await this.client.get<BotRequestResponse>(`/api/bots/request?requestId=${this.botRequestStatus.requestId}`);
       this.botRequestStatus = response.data;
       return response.data;
     } catch (error) {
