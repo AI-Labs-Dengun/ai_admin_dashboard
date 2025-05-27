@@ -60,7 +60,7 @@ export async function POST(request: Request) {
 
     // Gerar token JWT para o bot
     try {
-      const token = await generateBotToken(bot.id, null);
+      const token = await generateBotToken(bot.id, undefined);
       return NextResponse.json({ bot, token });
     } catch (tokenError) {
       console.error('Erro ao gerar token:', tokenError);
