@@ -13,6 +13,7 @@ import toast, { Toaster } from "react-hot-toast";
 import { useRouter } from "next/navigation";
 import { BotNotification } from "./templates/BotNotification";
 import { BotNotification as BotNotificationType } from "./types";
+import { BotRegisterNotification } from "./services/BotRegisterNotification";
 
 export function NotificationCenter() {
   const [notifications, setNotifications] = useState<BotNotificationType[]>([]);
@@ -21,31 +22,67 @@ export function NotificationCenter() {
   const { supabase } = useSupabase();
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const router = useRouter();
+  const botRegisterNotification = new BotRegisterNotification(supabase);
 
   useEffect(() => {
     checkSuperAdmin();
+  }, []);
+
+  useEffect(() => {
     if (isSuperAdmin) {
-      const channel = supabase
-        .channel("bot_notifications")
+      // Processar todas as solicitações pendentes ao inicializar
+      botRegisterNotification.processAllPendingRequests().then(() => {
+        loadNotifications();
+      });
+
+      // Configurar listeners de realtime para bot_requests
+      const requestsChannel = supabase
+        .channel('bot_requests_changes')
         .on(
-          "postgres_changes",
+          'postgres_changes',
           {
-            event: "*",
-            schema: "public",
-            table: "bot_notifications",
+            event: '*',
+            schema: 'public',
+            table: 'bot_requests'
           },
-          (payload) => {
+          async (payload) => {
+            console.log('Mudança detectada em bot_requests:', payload);
+            if (payload.eventType === 'INSERT' && payload.new?.status === 'pending') {
+              const notification = await botRegisterNotification.createNotificationFromRequest(payload.new);
+              if (notification) {
+                showNotificationToast(notification);
+                loadNotifications();
+              }
+            } else if (payload.eventType === 'UPDATE') {
+              loadNotifications();
+            }
+          }
+        )
+        .subscribe();
+
+      // Configurar listeners de realtime para bot_notifications
+      const notificationsChannel = supabase
+        .channel('bot_notifications_changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'bot_notifications'
+          },
+          () => {
+            console.log('Mudança detectada em bot_notifications');
             loadNotifications();
-            showNotificationToast(payload.new as BotNotificationType);
           }
         )
         .subscribe();
 
       return () => {
-        supabase.removeChannel(channel);
+        supabase.removeChannel(requestsChannel);
+        supabase.removeChannel(notificationsChannel);
       };
     }
-  }, [isSuperAdmin]);
+  }, [isSuperAdmin, supabase]);
 
   const checkSuperAdmin = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -61,9 +98,6 @@ export function NotificationCenter() {
       .single();
 
     setIsSuperAdmin(profile?.is_super_admin || false);
-    if (profile?.is_super_admin) {
-      loadNotifications();
-    }
   };
 
   const showNotificationToast = (notification: BotNotificationType) => {
@@ -88,6 +122,9 @@ export function NotificationCenter() {
                 <p className="mt-1 text-sm text-gray-500">
                   {notification.bot_name}
                 </p>
+                <p className="mt-1 text-sm text-gray-500">
+                  {notification.bot_description}
+                </p>
               </div>
             </div>
           </div>
@@ -105,7 +142,7 @@ export function NotificationCenter() {
         </div>
       ),
       {
-        duration: 5000,
+        duration: 10000,
         position: 'top-right',
       }
     );
@@ -114,23 +151,15 @@ export function NotificationCenter() {
   const loadNotifications = async () => {
     if (!isSuperAdmin) return;
 
-    const { data, error } = await supabase
-      .from("bot_notifications")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("Erro ao carregar notificações:", error);
-      return;
-    }
-
-    setNotifications(data || []);
-    setPendingCount(data?.filter(n => n.status === "pending").length || 0);
+    const pendingNotifications = await botRegisterNotification.loadPendingNotifications();
+    setNotifications(pendingNotifications);
+    setPendingCount(pendingNotifications.length);
   };
 
   const handleNotificationAction = async (
     notificationId: string,
-    action: "accept" | "reject"
+    action: "accept" | "reject",
+    requestId?: string
   ) => {
     if (!isSuperAdmin) {
       toast.error("Acesso restrito a super administradores");
@@ -138,25 +167,34 @@ export function NotificationCenter() {
     }
 
     try {
-      const { error } = await supabase
-        .from("bot_notifications")
-        .update({ status: action === "accept" ? "accepted" : "rejected" })
-        .eq("id", notificationId);
+      const notification = notifications.find(n => n.id === notificationId);
+      const reqId = requestId || notification?.request_id || notification?.notification_data?.requestId;
+      if (!reqId) {
+        throw new Error('Dados da notificação inválidos');
+      }
 
-      if (error) throw error;
-
-      toast.success(
-        `Solicitação ${action === "accept" ? "aceita" : "rejeitada"} com sucesso!`,
-        {
-          duration: 3000,
-          position: 'top-right',
-          style: {
-            background: '#10B981',
-            color: '#fff',
-          },
-        }
+      const success = await botRegisterNotification.updateNotificationStatus(
+        notificationId,
+        reqId,
+        action
       );
-      loadNotifications();
+
+      if (success) {
+        toast.success(
+          `Solicitação ${action === "accept" ? "aceita" : "rejeitada"} com sucesso!`,
+          {
+            duration: 3000,
+            position: 'top-right',
+            style: {
+              background: '#10B981',
+              color: '#fff',
+            },
+          }
+        );
+        loadNotifications();
+      } else {
+        throw new Error('Falha ao atualizar status');
+      }
     } catch (error) {
       console.error("Erro ao processar notificação:", error);
       toast.error("Erro ao processar notificação", {
@@ -206,8 +244,9 @@ export function NotificationCenter() {
                   <div key={notification.id}>
                     <BotNotification
                       {...notification}
+                      request_id={notification.request_id || notification.notification_data?.requestId}
                       onAction={(action) =>
-                        handleNotificationAction(notification.id, action)
+                        handleNotificationAction(notification.id, action, notification.request_id || notification.notification_data?.requestId)
                       }
                     />
                   </div>

@@ -1,11 +1,12 @@
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { ReactNode } from "react";
 
 export interface BaseNotificationProps {
   id: string;
   type: "bot" | "chat" | "ticket";
   title: string;
-  description?: string;
+  description?: ReactNode;
   status: "pending" | "accepted" | "rejected";
   created_at: string;
   notification_data: any;

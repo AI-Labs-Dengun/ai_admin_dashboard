@@ -8,7 +8,8 @@ export interface Notification {
 
 export interface BotNotification extends Notification {
   type: "bot";
-  bot_id: string;
+  bot_id?: string;
+  request_id?: string;
   bot_name: string;
   bot_description?: string;
 }
