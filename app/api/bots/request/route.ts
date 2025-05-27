@@ -106,33 +106,8 @@ export async function POST(request: Request) {
 
     console.log('✅ Solicitação criada:', newRequest);
 
-    // Criar notificação para super admins
-    const { error: notificationError } = await supabase
-      .from('bot_notifications')
-      .insert([
-        {
-          bot_id: newRequest.id,
-          bot_name: botRequest.name,
-          bot_description: botRequest.description || '',
-          notification_data: {
-            requestId: newRequest.id,
-            type: 'bot_request',
-            status: 'pending',
-            bot_name: botRequest.name,
-            bot_description: botRequest.description || '',
-            bot_capabilities: botRequest.capabilities || [],
-            contact_email: botRequest.contactEmail,
-            website: botRequest.website || null,
-            max_tokens_per_request: botRequest.maxTokensPerRequest || 1000
-          },
-          status: 'pending'
-        }
-      ]);
-
-    if (notificationError) {
-      console.error('Erro ao criar notificação:', notificationError);
-      // Não retornamos erro aqui pois a solicitação já foi criada
-    }
+    // Removendo a criação duplicada de notificações aqui, pois será gerenciada pelo BotRegisterNotification
+    // A notificação será criada automaticamente através do listener de realtime
 
     return NextResponse.json({
       requestId: newRequest.id,

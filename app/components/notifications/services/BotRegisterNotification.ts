@@ -14,14 +14,15 @@ export class BotRegisterNotification {
   async createNotificationFromRequest(request: any): Promise<BotNotification | null> {
     try {
       console.log('[BotRegisterNotification] Verificando notificação para request:', request.id);
+      
       // Verificar se já existe uma notificação para esta solicitação
       const { data: existingNotification, error: checkError } = await this.supabase
         .from('bot_notifications')
         .select('*')
-        .eq('notification_data->requestId', request.id)
+        .or(`bot_id.eq.${request.id},notification_data->requestId.eq.${request.id}`)
         .single();
 
-      if (checkError) {
+      if (checkError && checkError.code !== 'PGRST116') {
         console.error('[BotRegisterNotification] Erro ao checar notificação existente:', checkError);
       }
 
@@ -44,7 +45,8 @@ export class BotRegisterNotification {
               status: 'pending',
               capabilities: request.bot_capabilities,
               contactEmail: request.contact_email,
-              website: request.website
+              website: request.website,
+              max_tokens_per_request: request.max_tokens_per_request
             },
             status: 'pending'
           }
