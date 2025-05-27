@@ -1,6 +1,22 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { BotRequest, BotRequestResponse } from 'dengun_ai-admin-client';
+import { generateBotToken } from '@/app/(dashboard)/dashboard/lib/jwtManagement';
+
+interface BotRequest {
+  name: string;
+  description?: string;
+  capabilities?: string[];
+  contactEmail: string;
+  website?: string;
+  maxTokensPerRequest?: number;
+}
+
+interface BotRequestResponse {
+  requestId: string;
+  status: 'pending' | 'approved' | 'rejected';
+  attempts: number;
+  message?: string;
+}
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -11,11 +27,21 @@ export async function POST(request: Request) {
   try {
     const botRequest: BotRequest = await request.json();
 
+    // Validação dos campos obrigatórios
+    if (!botRequest.name || !botRequest.contactEmail) {
+      return NextResponse.json(
+        { error: 'Nome do bot e email de contato são obrigatórios' },
+        { status: 400 }
+      );
+    }
+
+    console.log('📥 Dados recebidos do bot:', botRequest);
+
     // Verificar se já existe uma solicitação pendente para este bot
     const { data: existingRequest } = await supabase
       .from('bot_requests')
       .select('*')
-      .eq('bot_name', botRequest.botName)
+      .eq('bot_name', botRequest.name)
       .single();
 
     if (existingRequest) {
@@ -29,7 +55,7 @@ export async function POST(request: Request) {
       }
 
       // Atualizar tentativa existente
-      const { data: updatedRequest } = await supabase
+      const { data: updatedRequest, error: updateError } = await supabase
         .from('bot_requests')
         .update({
           attempts: existingRequest.attempts + 1,
@@ -39,6 +65,14 @@ export async function POST(request: Request) {
         .select()
         .single();
 
+      if (updateError) {
+        console.error('Erro ao atualizar solicitação:', updateError);
+        return NextResponse.json(
+          { error: 'Erro ao atualizar solicitação existente' },
+          { status: 500 }
+        );
+      }
+
       return NextResponse.json({
         requestId: updatedRequest.id,
         status: updatedRequest.status,
@@ -47,21 +81,58 @@ export async function POST(request: Request) {
     }
 
     // Criar nova solicitação
-    const { data: newRequest } = await supabase
+    const { data: newRequest, error: insertError } = await supabase
       .from('bot_requests')
       .insert({
-        bot_name: botRequest.botName,
-        bot_description: botRequest.botDescription,
-        bot_version: botRequest.botVersion,
-        bot_capabilities: botRequest.botCapabilities,
+        bot_name: botRequest.name,
+        bot_description: botRequest.description || '',
+        bot_capabilities: botRequest.capabilities || [],
         contact_email: botRequest.contactEmail,
-        website: botRequest.website,
-        max_tokens_per_request: botRequest.maxTokensPerRequest,
+        website: botRequest.website || null,
+        max_tokens_per_request: botRequest.maxTokensPerRequest || 1000,
         status: 'pending',
         attempts: 1
       })
       .select()
       .single();
+
+    if (insertError || !newRequest) {
+      console.error('Erro ao criar solicitação:', insertError);
+      return NextResponse.json(
+        { error: 'Erro ao criar solicitação de bot' },
+        { status: 500 }
+      );
+    }
+
+    console.log('✅ Solicitação criada:', newRequest);
+
+    // Criar notificação para super admins
+    const { error: notificationError } = await supabase
+      .from('bot_notifications')
+      .insert([
+        {
+          bot_id: newRequest.id,
+          bot_name: botRequest.name,
+          bot_description: botRequest.description || '',
+          notification_data: {
+            requestId: newRequest.id,
+            type: 'bot_request',
+            status: 'pending',
+            bot_name: botRequest.name,
+            bot_description: botRequest.description || '',
+            bot_capabilities: botRequest.capabilities || [],
+            contact_email: botRequest.contactEmail,
+            website: botRequest.website || null,
+            max_tokens_per_request: botRequest.maxTokensPerRequest || 1000
+          },
+          status: 'pending'
+        }
+      ]);
+
+    if (notificationError) {
+      console.error('Erro ao criar notificação:', notificationError);
+      // Não retornamos erro aqui pois a solicitação já foi criada
+    }
 
     return NextResponse.json({
       requestId: newRequest.id,
@@ -89,11 +160,19 @@ export async function GET(request: Request) {
       );
     }
 
-    const { data: botRequest } = await supabase
+    const { data: botRequest, error: fetchError } = await supabase
       .from('bot_requests')
       .select('*')
       .eq('id', requestId)
       .single();
+
+    if (fetchError) {
+      console.error('Erro ao buscar solicitação:', fetchError);
+      return NextResponse.json(
+        { error: 'Erro ao buscar solicitação' },
+        { status: 500 }
+      );
+    }
 
     if (!botRequest) {
       return NextResponse.json(
@@ -105,9 +184,9 @@ export async function GET(request: Request) {
     return NextResponse.json({
       requestId: botRequest.id,
       status: botRequest.status,
-      attempts: botRequest.attempts,
-      message: botRequest.message
-    } as BotRequestResponse);
+      message: botRequest.message,
+      attempts: botRequest.attempts
+    });
   } catch (error) {
     console.error('Erro ao buscar status da solicitação:', error);
     return NextResponse.json(
