@@ -1,6 +1,6 @@
 import { SignJWT, jwtVerify, JWTPayload } from 'jose';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { createClient } from '@supabase/supabase-js';
+import { Database } from '@/types/supabase';
 
 interface JwtPayload extends JWTPayload {
   userId: string;
@@ -11,10 +11,7 @@ interface JwtPayload extends JWTPayload {
   [key: string]: any;
 }
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabase = createClientComponentClient<Database>();
 
 export async function generateBotToken(userId: string, tenantId?: string): Promise<string> {
   try {

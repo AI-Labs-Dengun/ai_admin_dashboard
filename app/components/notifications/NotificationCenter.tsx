@@ -51,10 +51,19 @@ export function NotificationCenter() {
               const notification = await botRegisterNotification.createNotificationFromRequest(payload.new);
               if (notification) {
                 showNotificationToast(notification);
-                loadNotifications();
+                // Atualizar notificações imediatamente
+                await loadNotifications();
+                // Adicionar animação de destaque
+                const notificationElement = document.getElementById(`notification-${notification.id}`);
+                if (notificationElement) {
+                  notificationElement.classList.add('animate-highlight');
+                  setTimeout(() => {
+                    notificationElement.classList.remove('animate-highlight');
+                  }, 2000);
+                }
               }
             } else if (payload.eventType === 'UPDATE') {
-              loadNotifications();
+              await loadNotifications();
             }
           }
         )
@@ -70,9 +79,9 @@ export function NotificationCenter() {
             schema: 'public',
             table: 'bot_notifications'
           },
-          () => {
+          async () => {
             console.log('Mudança detectada em bot_notifications');
-            loadNotifications();
+            await loadNotifications();
           }
         )
         .subscribe();
@@ -223,7 +232,7 @@ export function NotificationCenter() {
           >
             <Bell className="h-5 w-5" />
             {pendingCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center animate-pulse">
                 {pendingCount}
               </span>
             )}
@@ -241,7 +250,7 @@ export function NotificationCenter() {
             ) : (
               <div className="p-2 space-y-2">
                 {notifications.map((notification) => (
-                  <div key={notification.id}>
+                  <div key={notification.id} id={`notification-${notification.id}`}>
                     <BotNotification
                       {...notification}
                       request_id={notification.request_id || notification.notification_data?.requestId}
@@ -256,6 +265,16 @@ export function NotificationCenter() {
           </div>
         </PopoverContent>
       </Popover>
+      <style jsx global>{`
+        @keyframes highlight {
+          0% { background-color: rgba(59, 130, 246, 0.1); }
+          50% { background-color: rgba(59, 130, 246, 0.2); }
+          100% { background-color: transparent; }
+        }
+        .animate-highlight {
+          animation: highlight 2s ease-in-out;
+        }
+      `}</style>
     </>
   );
 } 
