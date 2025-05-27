@@ -87,7 +87,7 @@ npx ts-node --transpile-only tests/connection.test.ts
 
 # Alternativa 2: Compilando e executando
 npx tsc tests/connection.test.ts
-node tests/connection.test.js
+  node tests/connection.test.js
 ```
 
 O teste irá:

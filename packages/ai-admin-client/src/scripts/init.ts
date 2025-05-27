@@ -2,37 +2,36 @@
 
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
-import axios from 'axios';
-import dotenv from 'dotenv';
 
 const PACKAGE_DIR = 'dengun_ai-admin';
 
-interface TenantConfig {
-  tenantId: string;
-  token: string;
-  userId: string;
-  limits?: {
-    maxTokensPerRequest: number;
-    maxRequestsPerDay: number;
-  };
-}
-
 const createEnvFile = async (dashboardUrl: string) => {
   const envContent = `# Configurações do Bot
-BOT_NAME="Nome do seu bot"
-BOT_DESCRIPTION="Descrição detalhada do seu bot"
-BOT_CAPABILITIES="chat,image-generation,text-analysis"
-BOT_CONTACT_EMAIL="seu@email.com"
-BOT_WEBSITE="https://seu-bot.com"
+BOT_NAME="no_login_assistant"
+BOT_DESCRIPTION="chat Bot"
+BOT_CAPABILITIES="chat"
+BOT_CONTACT_EMAIL="ai@dengun.com"
+BOT_WEBSITE="https://no-login-assistant.vercel.app/"
 MAX_TOKENS_PER_REQUEST=1000
 
 # Configurações do Dashboard
-DASHBOARD_URL="${dashboardUrl}"
+DASHBOARD_URL="http://localhost:3000"
 
 # Configurações dos Tenants
 # Formato: TENANT_[ID]_TOKEN="seu-token-jwt"
 # Exemplo: TENANT_123_TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+
+# # Configurações do Bot
+# BOT_NAME="Nome do seu bot"
+# BOT_DESCRIPTION="Descrição detalhada do seu bot"
+# BOT_CAPABILITIES="chat,image-generation,text-analysis"
+# BOT_CONTACT_EMAIL="seu@email.com"
+# BOT_WEBSITE="https://seu-bot.com"
+# MAX_TOKENS_PER_REQUEST=1000
+
+# # Configurações do Dashboard
+# DASHBOARD_URL="${dashboardUrl}"
 `;
 
   const envPath = path.join(process.cwd(), PACKAGE_DIR, '.env');
@@ -55,7 +54,7 @@ dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 // Configuração base do bot
 const botConfig = {
-  baseUrl: process.env.DASHBOARD_URL,
+  baseUrl: process.env.DASHBOARD_URL || 'http://localhost:3000',
   botName: process.env.BOT_NAME,
   botDescription: process.env.BOT_DESCRIPTION,
   botCapabilities: process.env.BOT_CAPABILITIES?.split(',') || [],
@@ -84,49 +83,108 @@ class TenantSyncManager {
 
   public async syncTenants() {
     try {
-      // Buscar lista atualizada de tenants do dashboard
-      const response = await fetch(\`\${botConfig.baseUrl}/api/bots/tenants\`, {
-        headers: {
-          'Authorization': \`Bearer \${process.env.BOT_TOKEN}\`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Falha ao buscar tenants');
-      }
-
-      const tenants = await response.json();
-      
-      // Atualizar conexões
-      for (const tenant of tenants) {
-        const tenantId = tenant.id;
-        
-        // Verificar se o tenant já existe e se precisa ser atualizado
-        if (!this.tenantConnections[tenantId] || 
-            this.lastSync[tenantId] < tenant.updatedAt) {
-          
-          // Criar ou atualizar conexão
-          this.tenantConnections[tenantId] = createBotConnection({
-            ...botConfig,
-            token: tenant.token,
-            userId: tenant.userId,
-            tenantId: tenant.id
+      // Se não tiver BOT_TOKEN, tenta registrar o bot primeiro
+      if (!process.env.BOT_TOKEN) {
+        console.log('🔄 Registrando bot no dashboard...');
+        try {
+          const registerResponse = await fetch(botConfig.baseUrl + '/api/bots', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              name: botConfig.botName,
+              description: botConfig.botDescription,
+              capabilities: botConfig.botCapabilities,
+              contactEmail: botConfig.contactEmail,
+              website: botConfig.website
+            })
           });
 
-          this.lastSync[tenantId] = Date.now();
+          if (!registerResponse.ok) {
+            const errorData = await registerResponse.json();
+            throw new Error('Falha ao registrar bot: ' + (errorData.message || 'Erro desconhecido'));
+          }
+
+          const { token } = await registerResponse.json();
           
-          // Atualizar arquivo .env com as novas informações
-          this.updateEnvFile(tenant);
+          // Atualizar .env com o novo token
+          const envPath = path.join(__dirname, '..', '.env');
+          let envContent = fs.readFileSync(envPath, 'utf-8');
+          
+          if (envContent.includes('BOT_TOKEN=')) {
+            envContent = envContent.replace(/BOT_TOKEN=.*/, 'BOT_TOKEN="' + token + '"');
+          } else {
+            envContent = envContent + '\nBOT_TOKEN="' + token + '"';
+          }
+          
+          fs.writeFileSync(envPath, envContent);
+          process.env.BOT_TOKEN = token;
+          
+          console.log('✅ Bot registrado com sucesso!');
+        } catch (error) {
+          console.error('❌ Erro ao registrar bot:', error);
+          console.log('\n🔍 Verifique se:');
+          console.log('1. O dashboard está rodando em ' + botConfig.baseUrl);
+          console.log('2. A rota /api/bots está implementada no dashboard');
+          console.log('3. O formato dos dados enviados está correto');
+          throw error;
         }
       }
 
-      // Remover tenants que não existem mais
-      for (const tenantId of Object.keys(this.tenantConnections)) {
-        if (!tenants.find((t: any) => t.id === tenantId)) {
-          delete this.tenantConnections[tenantId];
-          delete this.lastSync[tenantId];
-          this.removeTenantFromEnv(tenantId);
+      // Buscar lista atualizada de tenants do dashboard
+      try {
+        const response = await fetch(botConfig.baseUrl + '/api/bots/tenants', {
+          headers: {
+            'Authorization': 'Bearer ' + process.env.BOT_TOKEN
+          }
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error('Falha ao buscar tenants: ' + (errorData.message || 'Erro desconhecido'));
         }
+
+        const tenants = await response.json();
+        
+        if (!Array.isArray(tenants)) {
+          throw new Error('Resposta inválida do servidor: lista de tenants não encontrada');
+        }
+
+        // Atualizar conexões
+        for (const tenant of tenants) {
+          const tenantId = tenant.id;
+          
+          // Verificar se o tenant já existe e se precisa ser atualizado
+          if (!this.tenantConnections[tenantId] || 
+              this.lastSync[tenantId] < tenant.updatedAt) {
+            
+            // Criar ou atualizar conexão
+            this.tenantConnections[tenantId] = createBotConnection({
+              ...botConfig,
+              token: tenant.token,
+              userId: tenant.userId,
+              tenantId: tenant.id
+            });
+
+            this.lastSync[tenantId] = Date.now();
+            
+            // Atualizar arquivo .env com as novas informações
+            this.updateEnvFile(tenant);
+          }
+        }
+
+        // Remover tenants que não existem mais
+        for (const tenantId of Object.keys(this.tenantConnections)) {
+          if (!tenants.find((t: any) => t.id === tenantId)) {
+            delete this.tenantConnections[tenantId];
+            delete this.lastSync[tenantId];
+            this.removeTenantFromEnv(tenantId);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Erro ao buscar tenants:', error);
+        throw error;
       }
     } catch (error) {
       console.error('Erro na sincronização dos tenants:', error);
@@ -140,20 +198,20 @@ class TenantSyncManager {
 
     // Atualizar ou adicionar variáveis do tenant
     const tenantVars = [
-      \`TENANT_\${tenant.id}_TOKEN="\${tenant.token}"\`,
-      \`TENANT_\${tenant.id}_USER_ID="\${tenant.userId}"\`,
-      \`TENANT_\${tenant.id}_MAX_TOKENS=\${tenant.maxTokens}\`,
-      \`TENANT_\${tenant.id}_MAX_REQUESTS=\${tenant.maxRequests}\`
+      'TENANT_' + tenant.id + '_TOKEN="' + tenant.token + '"',
+      'TENANT_' + tenant.id + '_USER_ID="' + tenant.userId + '"',
+      'TENANT_' + tenant.id + '_MAX_TOKENS=' + tenant.maxTokens,
+      'TENANT_' + tenant.id + '_MAX_REQUESTS=' + tenant.maxRequests
     ];
 
     for (const var_ of tenantVars) {
       const [key] = var_.split('=');
-      const regex = new RegExp(\`^\${key}.*$\`, 'm');
+      const regex = new RegExp('^' + key + '.*$', 'm');
       
       if (envContent.match(regex)) {
         envContent = envContent.replace(regex, var_);
       } else {
-        envContent += \`\\n\${var_}\`;
+        envContent = envContent + '\n' + var_;
       }
     }
 
@@ -165,8 +223,8 @@ class TenantSyncManager {
     let envContent = fs.readFileSync(envPath, 'utf-8');
 
     // Remover todas as variáveis do tenant
-    const regex = new RegExp(\`^TENANT_\${tenantId}_.*$\`, 'gm');
-    envContent = envContent.replace(regex, '').replace(/\\n\\n+/g, '\\n');
+    const regex = new RegExp('^TENANT_' + tenantId + '_.*$', 'gm');
+    envContent = envContent.replace(regex, '').replace(/\n\n+/g, '\n');
 
     fs.writeFileSync(envPath, envContent);
   }
@@ -390,41 +448,6 @@ testConnection().then(() => {
   }
 };
 
-const createTypesFile = () => {
-  const typesContent = `declare module 'dengun_ai-admin-client' {
-  export function createBotConnection(config: {
-    baseUrl: string;
-    token: string;
-    userId: string;
-    tenantId: string;
-    botName?: string;
-    botDescription?: string;
-    botCapabilities?: string[];
-    contactEmail?: string;
-    website?: string;
-    maxTokensPerRequest?: number;
-  }): {
-    sendMessage: (message: string) => Promise<any>;
-    getHistory: () => Promise<any>;
-    disconnect: () => void;
-  };
-}`;
-
-  const typesDir = path.join(process.cwd(), PACKAGE_DIR, 'types');
-  const typesPath = path.join(typesDir, 'dengun_ai-admin-client.d.ts');
-
-  if (!fs.existsSync(typesDir)) {
-    fs.mkdirSync(typesDir, { recursive: true });
-  }
-
-  if (!fs.existsSync(typesPath)) {
-    fs.writeFileSync(typesPath, typesContent);
-    console.log('✅ Arquivo de tipos criado com sucesso!');
-  } else {
-    console.log('ℹ️ Arquivo de tipos já existe. Mantendo configurações existentes.');
-  }
-};
-
 const main = async () => {
   try {
     console.log('🚀 Iniciando configuração do dengun_ai-admin-client...');
@@ -436,11 +459,10 @@ const main = async () => {
     }
 
     // Criar arquivos de configuração
-    await createEnvFile('https://seu-dashboard.com');
+    await createEnvFile('http://localhost:3000');
     createConfigFile();
     createExampleFile();
     createTestFile();
-    createTypesFile();
 
     console.log('\n🎉 Configuração concluída com sucesso!');
     console.log('\n📋 Próximos passos:');
@@ -456,7 +478,7 @@ const main = async () => {
     
     console.log('\n🔍 Para testar a conexão:');
     console.log('1. Instale as dependências necessárias:');
-    console.log('   npm install -D ts-node typescript @types/node');
+    console.log('   npm install -D ts-node typescript @types/node dotenv');
     console.log('2. Execute o teste de conexão:');
     console.log(`   npx ts-node ${PACKAGE_DIR}/tests/connection.test.ts`);
     
