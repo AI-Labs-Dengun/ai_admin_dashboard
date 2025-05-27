@@ -40,14 +40,32 @@ MAX_TOKENS_PER_REQUEST=1000
 
 # Configurações do Dashboard
 DASHBOARD_URL="https://seu-dashboard.com"
-BOT_TOKEN="seu-token-jwt"  # Token de autenticação do bot
-
-# Configurações dos Tenants
-# As configurações dos tenants serão sincronizadas automaticamente
-# Não é necessário configurar manualmente
 ```
 
-### 4. Estrutura Criada
+### 4. Instalação de Dependências
+
+Instale as dependências necessárias para executar os scripts:
+
+```bash
+npm install -D ts-node typescript @types/node dotenv axios
+```
+
+### 5. Registro do Bot
+
+Execute o comando de registro para enviar a solicitação ao dashboard:
+
+```bash
+# Registrar o bot no dashboard
+npx -p dengun_ai-admin-client dengun-ai-register
+```
+
+Este comando irá:
+- Verificar as configurações no arquivo .env
+- Enviar a solicitação de registro ao dashboard
+- Salvar o token recebido no arquivo .env
+- Mostrar instruções para os próximos passos
+
+### 6. Estrutura Criada
 
 Após a inicialização, você terá a seguinte estrutura:
 
@@ -64,7 +82,7 @@ dengun_ai-admin/
     └── bot-usage.ts    # Exemplo de uso
 ```
 
-### 5. Teste de Conexão
+### 7. Teste de Conexão
 
 Para verificar se a configuração está correta e testar a conexão com o dashboard:
 
@@ -72,22 +90,8 @@ Para verificar se a configuração está correta e testar a conexão com o dashb
 # 1. Navegue até a pasta do projeto
 cd dengun_ai-admin
 
-# 2. Instale as dependências necessárias
-npm install -D ts-node typescript @types/node dotenv
-
-# 3. Execute o teste de conexão usando o ts-node com as flags corretas
-npx ts-node --transpile-only --esm tests/connection.test.ts
-```
-
-Se você encontrar o erro "Unknown file extension .ts", tente uma destas alternativas:
-
-```bash
-# Alternativa 1: Usando ts-node com CommonJS
-npx ts-node --transpile-only tests/connection.test.ts
-
-# Alternativa 2: Compilando e executando
-npx tsc tests/connection.test.ts
-  node tests/connection.test.js
+# 2. Execute o teste de conexão
+npx ts-node tests/connection.test.ts
 ```
 
 O teste irá:
@@ -96,13 +100,7 @@ O teste irá:
 - Mostrar o status de cada tenant encontrado
 - Exibir mensagens de erro detalhadas se algo der errado
 
-Se você encontrar algum erro, verifique:
-1. Se está no diretório correto (`dengun_ai-admin`)
-2. Se todas as dependências foram instaladas
-3. Se o arquivo `.env` está configurado corretamente
-4. Se o `BOT_TOKEN` e `DASHBOARD_URL` estão definidos
-
-### 6. Uso do Cliente
+### 8. Uso do Cliente
 
 1. Importe o `botConnection` em seu código:
 
@@ -144,26 +142,7 @@ async function main() {
 }
 ```
 
-3. Ou use um tenant específico:
-
-```typescript
-const specificTenantId = '123';
-const specificConnection = getTenantConnection(specificTenantId);
-if (specificConnection) {
-  const status = await specificConnection.ping();
-  console.log('Status da conexão:', status);
-}
-```
-
-### 7. Sincronização Automática
-
-O cliente mantém uma sincronização automática com o dashboard:
-- Atualiza as configurações dos tenants a cada 5 minutos
-- Atualiza o arquivo `.env` automaticamente
-- Gerencia a adição/remoção de tenants
-- Mantém as conexões atualizadas
-
-### 8. Solução de Problemas
+### 9. Solução de Problemas
 
 #### Erros Comuns
 
@@ -182,9 +161,9 @@ O cliente mantém uma sincronização automática com o dashboard:
    - Confirme se o TypeScript está configurado corretamente
    - Verifique se todos os arquivos foram criados na pasta `dengun_ai-admin`
 
-### 9. Contribuição
+### 10. Contribuição
 - Para contribuir, faça um fork, crie uma branch e envie um pull request.
 - Siga o versionamento semântico (semver) para novas versões.
 
-### 10. Licença
+### 11. Licença
 ISC
