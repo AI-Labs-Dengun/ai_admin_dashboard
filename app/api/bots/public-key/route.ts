@@ -1,0 +1,22 @@
+import { NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
+
+export async function GET() {
+  try {
+    const publicKeyPath = path.join(process.cwd(), 'public.key');
+    const publicKey = fs.readFileSync(publicKeyPath, 'utf-8');
+
+    return NextResponse.json({
+      publicKey,
+      algorithm: 'RS256',
+      kid: 'bot-key-1'
+    });
+  } catch (error) {
+    console.error('Erro ao ler chave pública:', error);
+    return NextResponse.json(
+      { error: 'Erro ao obter chave pública' },
+      { status: 500 }
+    );
+  }
+} 
