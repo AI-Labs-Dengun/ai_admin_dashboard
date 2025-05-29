@@ -13,7 +13,7 @@ export async function PATCH(
 ) {
   try {
     const { status, message } = await request.json();
-    const requestId = params.requestId;
+    const { requestId } = params;
 
     if (!['approved', 'rejected'].includes(status)) {
       return NextResponse.json(

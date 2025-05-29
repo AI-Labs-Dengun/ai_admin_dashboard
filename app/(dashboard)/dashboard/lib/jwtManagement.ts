@@ -12,26 +12,25 @@ interface JwtPayload extends JWTPayload {
 
 export async function generateBotToken(userId: string, tenantId?: string, botId?: string): Promise<string> {
   try {
-    const response = await fetch('/api/auth/jwt', {
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+    const response = await fetch(`${baseUrl}/api/auth/jwt`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        action: 'generate',
         userId,
         tenantId,
-        botId,
-      }),
+        botId
+      })
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Erro ao gerar token');
+      throw new Error('Falha ao gerar token');
     }
 
-    const { token } = await response.json();
-    return token;
+    const data = await response.json();
+    return data.token;
   } catch (error) {
     console.error('Erro ao gerar token:', error);
     throw error;
