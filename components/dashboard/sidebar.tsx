@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Building2,
+  Bot,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -41,6 +42,11 @@ export function DashboardSidebar({ isOpen, onToggle }: SidebarProps) {
       name: "Overview",
       href: "/dashboard",
       icon: LayoutDashboard,
+    },
+    {
+      name: "Meus Bots",
+      href: "/dashboard/my-bots",
+      icon: Bot,
     },
     {
       name: "Token Usage",
