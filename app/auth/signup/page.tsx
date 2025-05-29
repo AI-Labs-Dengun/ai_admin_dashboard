@@ -66,7 +66,8 @@ export default function SignUp() {
             full_name: fullName,
             company: company,
             is_super_admin: true
-          }
+          },
+          emailRedirectTo: `${window.location.origin}/auth/callback`
         }
       });
 
@@ -97,7 +98,7 @@ export default function SignUp() {
         throw new Error(errorData.error || 'Erro ao criar perfil');
       }
 
-      toast.success('Conta criada com sucesso! Por favor, verifique seu email para confirmar sua conta.');
+      toast.success('Conta criada com sucesso! Você já pode fazer login com sua senha.');
       router.push('/auth/signin');
 
     } catch (error: any) {
