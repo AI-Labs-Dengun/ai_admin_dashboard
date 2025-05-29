@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "react-hot-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Copy } from "lucide-react";
 
 interface CreateUserModalProps {
   isOpen: boolean;
@@ -20,6 +20,7 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
   const [adminPassword, setAdminPassword] = useState("");
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [generatedPassword, setGeneratedPassword] = useState("");
   const [newUser, setNewUser] = useState({
     email: "",
     full_name: "",
@@ -75,6 +76,29 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
     }
   };
 
+  // Função para gerar senha aleatória
+  const generateRandomPassword = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+    let password = '';
+    for (let i = 0; i < 8; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setGeneratedPassword(password);
+  };
+
+  // Gerar senha quando o modal é aberto
+  useEffect(() => {
+    if (isOpen) {
+      generateRandomPassword();
+    }
+  }, [isOpen]);
+
+  // Função para copiar senha para a área de transferência
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(generatedPassword);
+    toast.success('Senha copiada para a área de transferência!');
+  };
+
   const handleCreateUser = async () => {
     try {
       setIsSaving(true);
@@ -117,7 +141,10 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(newUser),
+        body: JSON.stringify({
+          ...newUser,
+          password: generatedPassword
+        }),
       });
 
       const data = await response.json();
@@ -126,7 +153,7 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
         throw new Error(data.error || 'Erro ao criar usuário');
       }
 
-      toast.success('Usuário criado com sucesso! Um email com magic link foi enviado.');
+      toast.success('Usuário criado com sucesso!');
       
       // Limpar o formulário
       setNewUser({
@@ -137,6 +164,7 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
       });
       setAdminPassword("");
       setShowPasswordConfirm(false);
+      generateRandomPassword();
       
       await onSuccess();
       onClose();
@@ -154,7 +182,7 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
         <DialogHeader>
           <DialogTitle>Criar Novo Usuário</DialogTitle>
           <DialogDescription>
-            Preencha os dados para criar um novo usuário no sistema. Um email será enviado com as instruções de acesso.
+            Preencha os dados para criar um novo usuário no sistema. A senha gerada será enviada por email.
           </DialogDescription>
         </DialogHeader>
 
@@ -188,6 +216,32 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
               onChange={(e) => setNewUser({ ...newUser, company: e.target.value })}
               placeholder="Digite o nome da empresa"
             />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="generated_password">Senha Gerada</Label>
+            <div className="flex gap-2">
+              <Input
+                id="generated_password"
+                value={generatedPassword}
+                readOnly
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={copyToClipboard}
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={generateRandomPassword}
+              >
+                Gerar Nova
+              </Button>
+            </div>
           </div>
 
           <div className="flex items-center space-x-2">
