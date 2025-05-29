@@ -24,6 +24,7 @@ Este comando irá:
 - Criar a pasta `dengun_ai-admin`
 - Criar os arquivos de configuração necessários
 - Configurar a estrutura básica do projeto
+- Baixar a chave pública do dashboard para validação de tokens
 
 ### 3. Configuração do Bot
 
@@ -47,7 +48,7 @@ DASHBOARD_URL="https://seu-dashboard.com"
 Instale as dependências necessárias para executar os scripts:
 
 ```bash
-npm install -D ts-node typescript @types/node dotenv axios
+npm install -D ts-node typescript @types/node dotenv axios jose
 ```
 
 ### 5. Registro do Bot
@@ -82,7 +83,36 @@ dengun_ai-admin/
     └── bot-usage.ts    # Exemplo de uso
 ```
 
-### 7. Teste de Conexão
+### 7. Validação de Tokens
+
+O cliente inclui funcionalidades para validar tokens JWT:
+
+1. **Validação Local**:
+   - Usa a chave pública do dashboard
+   - Verifica assinatura e expiração
+   - Valida permissões no payload
+
+2. **Validação Remota** (opcional):
+   - Endpoint `/api/bots/validate-token`
+   - Verifica revogação de tokens
+   - Atualiza permissões em tempo real
+
+Exemplo de validação:
+```typescript
+import { validateToken } from 'dengun_ai-admin-client';
+
+// Validação local
+const isValid = await validateToken(token);
+
+// Validação remota (opcional)
+const validation = await validateToken(token, { remote: true });
+if (validation.valid) {
+  const { userId, tenantId, botId } = validation.payload;
+  // Usar os dados do token
+}
+```
+
+### 8. Teste de Conexão
 
 Para verificar se a configuração está correta e testar a conexão com o dashboard:
 
@@ -100,7 +130,7 @@ O teste irá:
 - Mostrar o status de cada tenant encontrado
 - Exibir mensagens de erro detalhadas se algo der errado
 
-### 8. Uso do Cliente
+### 9. Uso do Cliente
 
 1. Importe o `botConnection` em seu código:
 
@@ -142,7 +172,7 @@ async function main() {
 }
 ```
 
-### 9. Solução de Problemas
+### 10. Solução de Problemas
 
 #### Erros Comuns
 
@@ -156,14 +186,19 @@ async function main() {
    - Confirme se o arquivo `.env` está na pasta correta
    - Verifique se o bot foi aprovado pelo administrador do dashboard
 
-3. **Erro de importação**
+3. **Erro de validação de token**
+   - Verifique se a chave pública está atualizada
+   - Confirme se o token não expirou
+   - Verifique se o token não foi revogado
+
+4. **Erro de importação**
    - Verifique se o caminho de importação está correto
    - Confirme se o TypeScript está configurado corretamente
    - Verifique se todos os arquivos foram criados na pasta `dengun_ai-admin`
 
-### 10. Contribuição
+### 11. Contribuição
 - Para contribuir, faça um fork, crie uma branch e envie um pull request.
 - Siga o versionamento semântico (semver) para novas versões.
 
-### 11. Licença
+### 12. Licença
 ISC

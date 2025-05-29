@@ -26,8 +26,14 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-
 # Supabase
 schema_supabase.md
 
 sql/
+
+#keys
+private.key
+public.key
+
+#Folders
+md
