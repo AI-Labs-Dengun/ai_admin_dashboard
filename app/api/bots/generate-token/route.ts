@@ -44,9 +44,9 @@ export async function POST(request: Request) {
 
     // Obter dados do corpo da requisição
     const body = await request.json();
-    const { userId, tenantId } = body;
+    const { userId, tenantId, botId } = body;
 
-    console.log('Dados recebidos:', { userId, tenantId });
+    console.log('Dados recebidos:', { userId, tenantId, botId });
 
     if (!userId || !tenantId) {
       console.error('Dados inválidos:', body);
@@ -120,7 +120,7 @@ export async function POST(request: Request) {
 
     // Gerar token
     try {
-      const token = await generateBotToken(userId, tenantId);
+      const token = await generateBotToken(userId, tenantId, botId);
       if (!token) {
         throw new Error('Falha ao gerar token');
       }

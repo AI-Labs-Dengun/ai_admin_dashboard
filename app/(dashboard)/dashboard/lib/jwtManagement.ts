@@ -1,10 +1,13 @@
 import { SignJWT, jwtVerify, JWTPayload } from 'jose';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Database } from '@/types/supabase';
+import fs from 'fs';
+import path from 'path';
 
 interface JwtPayload extends JWTPayload {
   userId: string;
   tenantId?: string;
+  botId: string;
   botAccess: string[];
   allowBotAccess: boolean;
   tokenLimit: number;
@@ -13,12 +16,25 @@ interface JwtPayload extends JWTPayload {
 
 const supabase = createClientComponentClient<Database>();
 
-export async function generateBotToken(userId: string, tenantId?: string): Promise<string> {
+// Função para carregar a chave privada
+const loadPrivateKey = () => {
+  const privateKeyPath = path.join(process.cwd(), 'private.key');
+  return fs.readFileSync(privateKeyPath, 'utf-8');
+};
+
+// Função para carregar a chave pública
+const loadPublicKey = () => {
+  const publicKeyPath = path.join(process.cwd(), 'public.key');
+  return fs.readFileSync(publicKeyPath, 'utf-8');
+};
+
+export async function generateBotToken(userId: string, tenantId?: string, botId?: string): Promise<string> {
   try {
     // Se não houver tenantId, é um bot do sistema
     if (!tenantId) {
       const payload: JwtPayload = {
         userId,
+        botId: botId || 'system',
         botAccess: ['*'],
         allowBotAccess: true,
         tokenLimit: 1000000,
@@ -26,10 +42,13 @@ export async function generateBotToken(userId: string, tenantId?: string): Promi
         exp: Math.floor(Date.now() / 1000) + (60 * 60) // 1 hora
       };
 
-      const secret = new TextEncoder().encode(process.env.JWT_SECRET);
+      const privateKey = loadPrivateKey();
       return await new SignJWT(payload)
-        .setProtectedHeader({ alg: 'HS256' })
-        .sign(secret);
+        .setProtectedHeader({ 
+          alg: 'RS256',
+          kid: 'bot-key-1' // Identificador da chave
+        })
+        .sign(new TextEncoder().encode(privateKey));
     }
 
     // Para bots associados a tenants
@@ -51,6 +70,7 @@ export async function generateBotToken(userId: string, tenantId?: string): Promi
     const payload: JwtPayload = {
       userId,
       tenantId,
+      botId: botId || 'tenant',
       botAccess: tokenData.enabled_bots || [],
       allowBotAccess: tokenData.allow_bot_access,
       tokenLimit: tokenData.token_limit,
@@ -58,10 +78,13 @@ export async function generateBotToken(userId: string, tenantId?: string): Promi
       exp: Math.floor(Date.now() / 1000) + (60 * 60) // 1 hora
     };
 
-    const secret = new TextEncoder().encode(process.env.JWT_SECRET);
+    const privateKey = loadPrivateKey();
     return await new SignJWT(payload)
-      .setProtectedHeader({ alg: 'HS256' })
-      .sign(secret);
+      .setProtectedHeader({ 
+        alg: 'RS256',
+        kid: 'bot-key-1' // Identificador da chave
+      })
+      .sign(new TextEncoder().encode(privateKey));
   } catch (error) {
     console.error('Erro ao gerar token:', error);
     throw error;
@@ -70,8 +93,8 @@ export async function generateBotToken(userId: string, tenantId?: string): Promi
 
 export async function verifyBotToken(token: string): Promise<JwtPayload | null> {
   try {
-    const secret = new TextEncoder().encode(process.env.JWT_SECRET);
-    const { payload } = await jwtVerify(token, secret);
+    const publicKey = loadPublicKey();
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(publicKey));
     return payload as JwtPayload;
   } catch (error) {
     console.error('Erro ao verificar token:', error);
