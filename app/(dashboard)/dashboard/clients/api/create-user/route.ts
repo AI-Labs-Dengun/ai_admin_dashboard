@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     }
 
     // Obter os dados do novo usuário do corpo da requisição
-    const { email, full_name, company, is_super_admin } = await request.json();
+    const { email, full_name, company, is_super_admin, password } = await request.json();
 
     // Verificar se o email já existe
     const { data: existingUser } = await supabaseAdmin.auth.admin.listUsers({
@@ -48,11 +48,11 @@ export async function POST(request: Request) {
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       email_confirm: true,
+      password: password,
       user_metadata: {
         full_name,
         company,
-        is_super_admin,
-        needs_password_setup: true
+        is_super_admin
       }
     });
 
@@ -81,38 +81,20 @@ export async function POST(request: Request) {
       // Não retornamos erro aqui pois o usuário já foi criado
     }
 
-    // Enviar magic link
-    const { error: magicLinkError } = await supabaseAdmin.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
-        data: {
-          needs_password_setup: true,
-          full_name,
-          company,
-          is_super_admin
-        }
+    // Enviar email com a senha
+    const { error: emailError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+      data: {
+        full_name,
+        company,
+        is_super_admin,
+        password
       }
     });
 
-    if (magicLinkError) {
-      console.error('Erro ao enviar magic link:', magicLinkError);
-      // Tentar enviar novamente com um método alternativo
-      const { error: retryError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
-        data: {
-          needs_password_setup: true,
-          full_name,
-          company,
-          is_super_admin
-        }
-      });
-
-      if (retryError) {
-        console.error('Erro ao enviar convite:', retryError);
-        // Não retornamos erro aqui pois o usuário já foi criado
-        // Apenas logamos o erro para debug
-      }
+    if (emailError) {
+      console.error('Erro ao enviar email:', emailError);
+      // Não retornamos erro aqui pois o usuário já foi criado
     }
 
     return NextResponse.json({ 
