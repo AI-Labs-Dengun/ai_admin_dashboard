@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "react-hot-toast";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Bot, Info, Search } from "lucide-react";
+import { Bot, Info, Search, ExternalLink, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { BotDetailsModal } from "@/app/(dashboard)/dashboard/bots/components/BotDetailsModal";
 
 interface UserBot {
   id: string;
@@ -39,6 +40,12 @@ interface UserBot {
   bot_description: string;
   allow_bot_access: boolean;
   token_limit: number;
+  name: string;
+  description: string | null;
+  bot_capabilities: string[];
+  contact_email: string | null;
+  website: string | null;
+  max_tokens_per_request: number;
 }
 
 export default function MyBotsPage() {
@@ -47,6 +54,9 @@ export default function MyBotsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [searchType, setSearchType] = useState<"bot" | "tenant">("bot");
+  const [accessingBot, setAccessingBot] = useState<string | null>(null);
+  const [selectedBot, setSelectedBot] = useState<UserBot | null>(null);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const router = useRouter();
   const supabase = createClientComponentClient();
 
@@ -129,6 +139,115 @@ export default function MyBotsPage() {
     return Math.min((used / limit) * 100, 100);
   };
 
+  const handleAccessBot = async (botId: string, tenantId: string) => {
+    try {
+      console.log('🚀 Iniciando processo de acesso ao bot:', { botId, tenantId });
+      setAccessingBot(botId);
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error('❌ Usuário não autenticado');
+        toast.error('Usuário não autenticado');
+        return;
+      }
+
+      console.log('👤 Usuário autenticado:', user.id);
+
+      // Verificar se o bot está habilitado para o usuário
+      const { data: userBot, error: userBotError } = await supabase
+        .from('user_bots')
+        .select('enabled')
+        .match({
+          user_id: user.id,
+          tenant_id: tenantId,
+          bot_id: botId
+        })
+        .single();
+
+      if (userBotError) {
+        console.error('❌ Erro ao verificar acesso ao bot:', userBotError);
+        toast.error('Erro ao verificar acesso ao bot');
+        return;
+      }
+
+      if (!userBot?.enabled) {
+        console.error('❌ Bot não está habilitado para o usuário');
+        toast.error('Bot não está habilitado para seu usuário');
+        return;
+      }
+
+      // Verificar se o usuário tem permissão para acessar bots no tenant
+      const { data: tenantUser, error: tenantUserError } = await supabase
+        .from('tenant_users')
+        .select('allow_bot_access')
+        .match({
+          user_id: user.id,
+          tenant_id: tenantId
+        })
+        .single();
+
+      if (tenantUserError) {
+        console.error('❌ Erro ao verificar permissões do usuário:', tenantUserError);
+        toast.error('Erro ao verificar permissões');
+        return;
+      }
+
+      if (!tenantUser?.allow_bot_access) {
+        console.error('❌ Usuário não tem permissão para acessar bots');
+        toast.error('Você não tem permissão para acessar bots');
+        return;
+      }
+
+      // Gerar token de acesso usando a nova rota do cliente
+      const response = await fetch('/api/bots/client/generate-token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          botId,
+          tenantId
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error('❌ Erro ao gerar token:', data.error);
+        toast.error(data.error || 'Erro ao gerar token de acesso');
+        return;
+      }
+
+      console.log('✅ Token gerado com sucesso');
+
+      // Armazenar token e redirecionar
+      localStorage.setItem('botToken', data.token);
+      localStorage.setItem('currentBotId', botId);
+      localStorage.setItem('currentTenantId', tenantId);
+
+      console.log('🔄 Redirecionando para a página do bot...');
+      router.push(`/dashboard/bots/${botId}`);
+    } catch (error) {
+      console.error('❌ Erro ao acessar bot:', error);
+      toast.error('Erro ao acessar bot');
+    } finally {
+      setAccessingBot(null);
+    }
+  };
+
+  const handleViewDetails = (bot: UserBot) => {
+    setSelectedBot({
+      ...bot,
+      name: bot.bot_name,
+      description: bot.bot_description,
+      bot_capabilities: [],
+      contact_email: bot.admin_email,
+      website: null,
+      max_tokens_per_request: bot.token_limit
+    });
+    setIsDetailsModalOpen(true);
+  };
+
   if (loading) {
     return <div>Carregando...</div>;
   }
@@ -200,60 +319,37 @@ export default function MyBotsPage() {
                 />
               </div>
 
-              <div className="mt-4 flex justify-between items-center text-sm text-muted-foreground">
-                <span>Criado em: {new Date(bot.created_at).toLocaleDateString('pt-BR')}</span>
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="ghost" size="icon">
-                      <Info className="h-4 w-4" />
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Detalhes do Bot</DialogTitle>
-                      <DialogDescription>
-                        Informações detalhadas sobre o bot {bot.bot_name}
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div>
-                        <h4 className="font-medium mb-1">Descrição</h4>
-                        <p className="text-sm text-muted-foreground">{bot.bot_description}</p>
-                      </div>
-                      <div>
-                        <h4 className="font-medium mb-1">Admin</h4>
-                        <div className="text-sm text-muted-foreground">
-                          <p>Nome: {bot.admin_name}</p>
-                          <p>Email: {bot.admin_email}</p>
-                        </div>
-                      </div>
-                      <div>
-                        <h4 className="font-medium mb-1">Status</h4>
-                        <Badge variant={bot.enabled ? "default" : "secondary"}>
-                          {bot.enabled ? "Ativo" : "Inativo"}
-                        </Badge>
-                      </div>
-                      <div>
-                        <h4 className="font-medium mb-1">Limite de Tokens</h4>
-                        <div className="space-y-2">
-                          <div className="flex justify-between text-sm">
-                            <span>Limite: {bot.token_limit}</span>
-                          </div>
-                          <Progress 
-                            value={getTokenUsagePercentage(0, bot.token_limit)} 
-                            className="h-2"
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <h4 className="font-medium mb-1">Datas</h4>
-                        <div className="text-sm text-muted-foreground">
-                          <p>Criado em: {new Date(bot.created_at).toLocaleDateString('pt-BR')}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
+              <div className="mt-4 flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">
+                  Criado em: {new Date(bot.created_at).toLocaleDateString('pt-BR')}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handleViewDetails(bot)}
+                  >
+                    <Info className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => handleAccessBot(bot.bot_id, bot.tenant_id)}
+                    disabled={!bot.enabled || accessingBot === bot.bot_id}
+                  >
+                    {accessingBot === bot.bot_id ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Acessando...
+                      </>
+                    ) : (
+                      <>
+                        <ExternalLink className="mr-2 h-4 w-4" />
+                        Acessar Bot
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -273,6 +369,13 @@ export default function MyBotsPage() {
           </CardContent>
         </Card>
       )}
+
+      <BotDetailsModal
+        isOpen={isDetailsModalOpen}
+        onClose={() => setIsDetailsModalOpen(false)}
+        bot={selectedBot}
+        onSuccess={() => {}}
+      />
     </div>
   );
-} 
+}   

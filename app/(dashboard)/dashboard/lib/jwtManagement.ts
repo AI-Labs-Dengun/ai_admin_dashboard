@@ -45,24 +45,25 @@ export async function generateBotToken(userId: string, tenantId?: string, botId?
 
 export async function verifyBotToken(token: string): Promise<JwtPayload | null> {
   try {
-    const response = await fetch('/api/auth/jwt', {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const response = await fetch(`${baseUrl}/api/auth/jwt`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         action: 'verify',
-        token,
-      }),
+        token
+      })
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Erro ao verificar token');
+      console.error('Erro na resposta da verificação do token:', await response.text());
+      return null;
     }
 
-    const { payload } = await response.json();
-    return payload as JwtPayload;
+    const data = await response.json();
+    return data.payload;
   } catch (error) {
     console.error('Erro ao verificar token:', error);
     return null;
