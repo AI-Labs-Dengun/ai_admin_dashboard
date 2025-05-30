@@ -57,4 +57,18 @@ export interface BotRegistration {
   tokenLimit: number;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface BotSession {
+  token: string;
+  ip: string;
+  fingerprint: string;
+  createdAt: Date;
+  expiresAt: Date;
+}
+
+export interface BotSessionResponse {
+  sessionId: string;
+  status: 'active' | 'expired' | 'invalid';
+  expiresAt: Date;
 } 

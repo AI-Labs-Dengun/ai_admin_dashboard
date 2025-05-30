@@ -165,6 +165,29 @@ export class BotConnection {
     return { ...this.connectionStatus };
   }
 
+  public async startBotSession(token: string, ip: string, fingerprint: string): Promise<boolean> {
+    try {
+      const response = await this.client.post('/api/bots/session', {
+        token,
+        ip,
+        fingerprint
+      });
+      
+      this.connectionStatus = {
+        isConnected: true,
+        lastPing: new Date()
+      };
+      
+      return true;
+    } catch (error) {
+      this.connectionStatus = {
+        isConnected: false,
+        error: error instanceof Error ? error.message : 'Erro ao iniciar sessão'
+      };
+      return false;
+    }
+  }
+
   private handleError(error: any): ErrorResponse {
     if (axios.isAxiosError(error)) {
       return {
