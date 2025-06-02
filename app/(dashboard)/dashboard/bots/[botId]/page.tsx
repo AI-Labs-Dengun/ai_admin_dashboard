@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { toast } from "react-hot-toast";
+import { use } from "react";
 
 interface BotDetails {
   id: string;
@@ -17,15 +18,16 @@ interface BotDetails {
   max_tokens_per_request: number;
 }
 
-export default function BotPage({ params }: { params: { botId: string } }) {
+export default function BotPage({ params }: { params: Promise<{ botId: string }> }) {
   const [loading, setLoading] = useState(true);
   const [botDetails, setBotDetails] = useState<BotDetails | null>(null);
   const router = useRouter();
+  const { botId } = use(params);
 
   useEffect(() => {
     const validateAccess = async () => {
       try {
-        console.log('🔍 Iniciando validação de acesso ao bot:', params.botId);
+        console.log('🔍 Iniciando validação de acesso ao bot:', botId);
         
         const token = localStorage.getItem('botToken');
         const storedBotId = localStorage.getItem('currentBotId');
@@ -61,7 +63,7 @@ export default function BotPage({ params }: { params: { botId: string } }) {
         console.log('✅ Token validado com sucesso');
 
         // Buscar detalhes do bot
-        const botResponse = await fetch(`/api/bots/${params.botId}`);
+        const botResponse = await fetch(`/api/bots/${botId}`);
         const botData = await botResponse.json();
 
         if (!botResponse.ok) {
@@ -82,7 +84,7 @@ export default function BotPage({ params }: { params: { botId: string } }) {
     };
 
     validateAccess();
-  }, [params.botId, router]);
+  }, [botId, router]);
 
   if (loading) {
     return (

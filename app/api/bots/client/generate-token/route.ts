@@ -37,9 +37,10 @@ export async function POST(request: Request) {
 
     // Primeiro, verificar se o bot existe e está ativo
     const { data: bot, error: botError } = await supabase
-      .from('bots')
+      .from('user_bots_details')
       .select('*')
-      .eq('id', botId)
+      .eq('bot_id', botId)
+      .eq('tenant_id', tenantId)
       .maybeSingle();
 
     if (botError) {
@@ -58,13 +59,22 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log('✅ Bot encontrado:', bot.name);
+    if (!bot.bot_website) {
+      console.error('❌ Website do bot não configurado');
+      return NextResponse.json(
+        { error: 'Website do bot não configurado' },
+        { status: 400 }
+      );
+    }
 
-    // Verificar se o tenant existe e está ativo
-    const { data: tenant, error: tenantError } = await supabase
-      .from('tenants')
-      .select('id, name')
-      .eq('id', tenantId)
+    console.log('✅ Bot encontrado:', bot.bot_name);
+
+    // Verificar se o tenant existe e está ativo através do user_bots_details
+    const { data: tenantData, error: tenantError } = await supabase
+      .from('user_bots_details')
+      .select('tenant_id, tenant_name')
+      .eq('tenant_id', tenantId)
+      .eq('bot_id', botId)
       .maybeSingle();
 
     if (tenantError) {
@@ -75,7 +85,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!tenant) {
+    if (!tenantData) {
       console.error('❌ Tenant não encontrado');
       return NextResponse.json(
         { error: 'Tenant não encontrado' },
@@ -83,7 +93,7 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log('✅ Tenant encontrado:', tenant.name);
+    console.log('✅ Tenant encontrado:', tenantData.tenant_name);
 
     // Verificar se o bot está habilitado para o tenant
     const { data: tenantBot, error: tenantBotError } = await supabase
@@ -178,7 +188,13 @@ export async function POST(request: Request) {
       }
 
       console.log('✅ Token gerado com sucesso');
-      return NextResponse.json({ token });
+      return NextResponse.json({ 
+        token,
+        website: bot.bot_website,
+        botName: bot.bot_name,
+        botId: bot.bot_id,
+        tenantId: tenantId
+      });
     } catch (tokenError) {
       console.error('❌ Erro ao gerar token:', tokenError);
       return NextResponse.json(

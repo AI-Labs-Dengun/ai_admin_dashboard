@@ -44,8 +44,22 @@ interface UserBot {
   description: string | null;
   bot_capabilities: string[];
   contact_email: string | null;
+  bot_website: string | null;
+  max_tokens_per_request: number;
+  bots?: {
+    website: string | null;
+  };
+}
+
+interface BotDetails {
+  id: string;
+  name: string;
+  description: string | null;
+  bot_capabilities: string[];
+  contact_email: string | null;
   website: string | null;
   max_tokens_per_request: number;
+  created_at: string;
 }
 
 export default function MyBotsPage() {
@@ -55,32 +69,51 @@ export default function MyBotsPage() {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [searchType, setSearchType] = useState<"bot" | "tenant">("bot");
   const [accessingBot, setAccessingBot] = useState<string | null>(null);
-  const [selectedBot, setSelectedBot] = useState<UserBot | null>(null);
+  const [selectedBot, setSelectedBot] = useState<BotDetails | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const router = useRouter();
   const supabase = createClientComponentClient();
 
   useEffect(() => {
     const checkSuperAdmin = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error('❌ Erro ao obter sessão:', sessionError);
+          router.push('/auth/signin');
+          return;
+        }
+
+        if (!session) {
+          console.log('❌ Nenhuma sessão encontrada');
+          router.push('/auth/signin');
+          return;
+        }
+
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('is_super_admin')
+          .eq('id', session.user.id)
+          .maybeSingle();
+
+        if (profileError) {
+          console.error('❌ Erro ao buscar perfil:', profileError);
+          toast.error('Erro ao carregar perfil');
+          return;
+        }
+
+        setIsSuperAdmin(profile?.is_super_admin || false);
+        
+        if (profile?.is_super_admin) {
+          await fetchAllBots();
+        } else {
+          await fetchUserBots(session.user.id);
+        }
+      } catch (error) {
+        console.error('❌ Erro ao verificar super admin:', error);
+        toast.error('Erro ao verificar permissões');
         router.push('/auth/signin');
-        return;
-      }
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('is_super_admin')
-        .eq('id', user.id)
-        .single();
-
-      setIsSuperAdmin(profile?.is_super_admin || false);
-      
-      if (profile?.is_super_admin) {
-        fetchAllBots();
-      } else {
-        fetchUserBots(user.id);
       }
     };
 
@@ -91,7 +124,12 @@ export default function MyBotsPage() {
     try {
       const { data, error } = await supabase
         .from('user_bots_details')
-        .select('*')
+        .select(`
+          *,
+          bots:bot_id (
+            website
+          )
+        `)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -108,7 +146,12 @@ export default function MyBotsPage() {
     try {
       const { data, error } = await supabase
         .from('user_bots_details')
-        .select('*')
+        .select(`
+          *,
+          bots:bot_id (
+            website
+          )
+        `)
         .eq('user_id', userId)
         .eq('enabled', true)
         .eq('allow_bot_access', true)
@@ -144,25 +187,86 @@ export default function MyBotsPage() {
       console.log('🚀 Iniciando processo de acesso ao bot:', { botId, tenantId });
       setAccessingBot(botId);
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.error('❌ Usuário não autenticado');
-        toast.error('Usuário não autenticado');
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error('❌ Erro ao obter sessão:', sessionError);
+        toast.error('Erro de autenticação');
         return;
       }
 
-      console.log('👤 Usuário autenticado:', user.id);
+      if (!session) {
+        console.error('❌ Nenhuma sessão encontrada');
+        toast.error('Usuário não autenticado');
+        router.push('/auth/signin');
+        return;
+      }
+
+      console.log('👤 Usuário autenticado:', session.user.id);
+
+      // Primeiro, verificar se o bot existe em user_bots_details
+      console.log('🔍 Verificando bot em user_bots_details:', { botId, tenantId });
+      const { data: userBotDetails, error: userBotDetailsError } = await supabase
+        .from('user_bots_details')
+        .select('*')
+        .eq('bot_id', botId)
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+
+      if (userBotDetailsError) {
+        console.error('❌ Erro ao verificar user_bots_details:', userBotDetailsError);
+        toast.error('Erro ao verificar detalhes do bot');
+        return;
+      }
+
+      if (!userBotDetails) {
+        console.error('❌ Bot não encontrado em user_bots_details:', { botId, tenantId });
+        toast.error('Bot não encontrado');
+        return;
+      }
+
+      console.log('✅ Bot encontrado em user_bots_details:', userBotDetails);
+
+      // Verificar se o bot está habilitado para o tenant
+      console.log('🔍 Verificando status do bot no tenant:', { botId, tenantId });
+      const { data: tenantBot, error: tenantBotError } = await supabase
+        .from('tenant_bots')
+        .select('enabled')
+        .match({
+          tenant_id: tenantId,
+          bot_id: botId
+        })
+        .maybeSingle();
+
+      if (tenantBotError) {
+        console.error('❌ Erro ao verificar bot no tenant:', tenantBotError);
+        toast.error('Erro ao verificar bot no tenant');
+        return;
+      }
+
+      if (!tenantBot?.enabled) {
+        console.error('❌ Bot não está habilitado para o tenant:', { botId, tenantId });
+        toast.error('Bot não está habilitado para este tenant');
+        return;
+      }
+
+      console.log('✅ Bot habilitado para o tenant');
 
       // Verificar se o bot está habilitado para o usuário
+      console.log('🔍 Verificando acesso do usuário ao bot:', { 
+        userId: session.user.id, 
+        botId, 
+        tenantId 
+      });
       const { data: userBot, error: userBotError } = await supabase
         .from('user_bots')
         .select('enabled')
         .match({
-          user_id: user.id,
+          user_id: session.user.id,
           tenant_id: tenantId,
           bot_id: botId
         })
-        .single();
+        .maybeSingle();
 
       if (userBotError) {
         console.error('❌ Erro ao verificar acesso ao bot:', userBotError);
@@ -171,17 +275,27 @@ export default function MyBotsPage() {
       }
 
       if (!userBot?.enabled) {
-        console.error('❌ Bot não está habilitado para o usuário');
+        console.error('❌ Bot não está habilitado para o usuário:', { 
+          userId: session.user.id, 
+          botId, 
+          tenantId 
+        });
         toast.error('Bot não está habilitado para seu usuário');
         return;
       }
 
+      console.log('✅ Acesso ao bot validado');
+
       // Verificar se o usuário tem permissão para acessar bots no tenant
+      console.log('🔍 Verificando permissões do usuário no tenant:', { 
+        userId: session.user.id, 
+        tenantId 
+      });
       const { data: tenantUser, error: tenantUserError } = await supabase
         .from('tenant_users')
         .select('allow_bot_access')
         .match({
-          user_id: user.id,
+          user_id: session.user.id,
           tenant_id: tenantId
         })
         .single();
@@ -193,12 +307,18 @@ export default function MyBotsPage() {
       }
 
       if (!tenantUser?.allow_bot_access) {
-        console.error('❌ Usuário não tem permissão para acessar bots');
+        console.error('❌ Usuário não tem permissão para acessar bots:', { 
+          userId: session.user.id, 
+          tenantId 
+        });
         toast.error('Você não tem permissão para acessar bots');
         return;
       }
 
+      console.log('✅ Permissões validadas');
+
       // Gerar token de acesso usando a nova rota do cliente
+      console.log('🔑 Gerando token de acesso:', { botId, tenantId });
       const response = await fetch('/api/bots/client/generate-token', {
         method: 'POST',
         headers: {
@@ -213,7 +333,10 @@ export default function MyBotsPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        console.error('❌ Erro ao gerar token:', data.error);
+        console.error('❌ Erro ao gerar token:', { 
+          status: response.status, 
+          error: data.error 
+        });
         toast.error(data.error || 'Erro ao gerar token de acesso');
         return;
       }
@@ -224,6 +347,7 @@ export default function MyBotsPage() {
       localStorage.setItem('botToken', data.token);
       localStorage.setItem('currentBotId', botId);
       localStorage.setItem('currentTenantId', tenantId);
+      localStorage.setItem('botWebsite', data.website);
 
       console.log('🔄 Redirecionando para a página do bot...');
       router.push(`/dashboard/bots/${botId}`);
@@ -237,13 +361,14 @@ export default function MyBotsPage() {
 
   const handleViewDetails = (bot: UserBot) => {
     setSelectedBot({
-      ...bot,
+      id: bot.bot_id,
       name: bot.bot_name,
       description: bot.bot_description,
-      bot_capabilities: [],
+      bot_capabilities: bot.bot_capabilities || [],
       contact_email: bot.admin_email,
-      website: null,
-      max_tokens_per_request: bot.token_limit
+      website: bot.bot_website || bot.bots?.website || null,
+      max_tokens_per_request: bot.token_limit,
+      created_at: bot.created_at
     });
     setIsDetailsModalOpen(true);
   };
