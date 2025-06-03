@@ -317,7 +317,7 @@ export default function MyBotsPage() {
 
       console.log('✅ Permissões validadas');
 
-      // Gerar token de acesso usando a nova rota do cliente
+      // Gerar token de acesso
       console.log('🔑 Gerando token de acesso:', { botId, tenantId });
       const response = await fetch('/api/bots/client/generate-token', {
         method: 'POST',
@@ -343,14 +343,10 @@ export default function MyBotsPage() {
 
       console.log('✅ Token gerado com sucesso');
 
-      // Armazenar token e redirecionar
-      localStorage.setItem('botToken', data.token);
-      localStorage.setItem('currentBotId', botId);
-      localStorage.setItem('currentTenantId', tenantId);
-      localStorage.setItem('botWebsite', data.website);
-
-      console.log('🔄 Redirecionando para a página do bot...');
-      router.push(`/dashboard/bots/${botId}`);
+      // Redirecionar para a rota do proxy
+      const proxyUrl = `/proxy/${botId}?token=${data.token}`;
+      console.log('🔄 Redirecionando para:', proxyUrl);
+      router.push(proxyUrl);
     } catch (error) {
       console.error('❌ Erro ao acessar bot:', error);
       toast.error('Erro ao acessar bot');
