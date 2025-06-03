@@ -2,24 +2,17 @@ import { NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { verifyBotToken } from '@/app/(dashboard)/dashboard/lib/jwtManagement';
+import { checkTokenBalance, recordTokenUsage, calculateTokens } from '@/app/(dashboard)/dashboard/lib/tokenManagement';
 
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ botId: string }> }
-) {
+// Função auxiliar para criar o cliente Supabase
+const createSupabaseClient = () => {
+  const cookieStore = cookies();
+  return createRouteHandlerClient({ cookies: () => cookieStore });
+};
+
+// Função auxiliar para processar a requisição
+async function processRequest(request: Request, botId: string, token: string) {
   try {
-    const { botId } = await params;
-    const { searchParams } = new URL(request.url);
-    const token = searchParams.get('token');
-
-    if (!token) {
-      console.error('❌ Token não fornecido');
-      return NextResponse.json(
-        { error: 'Token não fornecido' },
-        { status: 401 }
-      );
-    }
-
     // Verificar o token
     const payload = await verifyBotToken(token);
     if (!payload) {
@@ -30,16 +23,17 @@ export async function GET(
       );
     }
 
-    console.log('✅ Token validado:', { 
-      userId: payload.userId, 
-      tenantId: payload.tenantId, 
-      botId 
-    });
+    if (!payload.userId || !payload.tenantId) {
+      console.error('❌ Payload inválido: userId ou tenantId ausentes');
+      return NextResponse.json(
+        { error: 'Token inválido: dados incompletos' },
+        { status: 401 }
+      );
+    }
 
-    const cookieStore = cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = createSupabaseClient();
 
-    // Buscar informações do bot através da view user_bots_details
+    // Buscar informações do bot
     const { data: botDetails, error: botError } = await supabase
       .from('user_bots_details')
       .select(`
@@ -60,7 +54,7 @@ export async function GET(
       .eq('user_id', payload.userId)
       .single();
 
-    if (botError) {
+    if (botError || !botDetails) {
       console.error('❌ Erro ao buscar detalhes do bot:', botError);
       return NextResponse.json(
         { error: 'Erro ao buscar detalhes do bot' },
@@ -68,80 +62,36 @@ export async function GET(
       );
     }
 
-    if (!botDetails) {
-      console.error('❌ Bot não encontrado ou acesso não permitido');
-      return NextResponse.json(
-        { error: 'Bot não encontrado ou acesso não permitido' },
-        { status: 404 }
-      );
-    }
-
-    if (!botDetails.enabled) {
-      console.error('❌ Bot não está habilitado');
-      return NextResponse.json(
-        { error: 'Bot não está habilitado' },
-        { status: 403 }
-      );
-    }
-
-    if (!botDetails.allow_bot_access) {
-      console.error('❌ Acesso ao bot não permitido');
-      return NextResponse.json(
-        { error: 'Acesso ao bot não permitido' },
-        { status: 403 }
-      );
-    }
-
-    if (!botDetails.bot_website) {
-      console.error('❌ Website do bot não configurado');
-      return NextResponse.json(
-        { error: 'Website do bot não configurado' },
-        { status: 400 }
-      );
-    }
-
-    console.log('✅ Bot encontrado:', { 
-      name: botDetails.bot_name, 
-      website: botDetails.bot_website 
-    });
-
-    // Verificar uso de tokens na tabela token_usage
-    const { data: tokenUsage, error: usageError } = await supabase
-      .from('token_usage')
-      .select('tokens_used, total_tokens')
-      .eq('user_id', payload.userId)
-      .eq('bot_id', botId)
-      .eq('tenant_id', payload.tenantId)
-      .single();
-
-    if (usageError && usageError.code !== 'PGRST116') {
-      console.error('❌ Erro ao verificar uso de tokens:', usageError);
-      return NextResponse.json(
-        { error: 'Erro ao verificar uso de tokens' },
-        { status: 500 }
-      );
-    }
-
-    const tokensUsed = tokenUsage?.tokens_used || 0;
-    const tokenLimit = botDetails.token_limit;
-
-    if (tokensUsed >= tokenLimit) {
-      console.error('❌ Limite de tokens atingido:', { 
-        used: tokensUsed, 
-        limit: tokenLimit 
+    // Verificar permissões e estado do bot
+    if (!botDetails.enabled || !botDetails.allow_bot_access || !botDetails.bot_website) {
+      console.error('❌ Bot não disponível:', { 
+        enabled: botDetails.enabled,
+        allowAccess: botDetails.allow_bot_access,
+        hasWebsite: !!botDetails.bot_website
       });
       return NextResponse.json(
-        { error: 'Limite de tokens atingido' },
+        { error: 'Bot não disponível' },
         { status: 403 }
       );
     }
 
-    console.log('✅ Uso de tokens verificado:', { 
-      tokensUsed, 
-      limit: tokenLimit 
-    });
+    // Verificar saldo de tokens
+    const tokenBalance = await checkTokenBalance(payload.userId, payload.tenantId, botId);
+    if (!tokenBalance.hasTokens) {
+      console.error('❌ Sem tokens disponíveis:', { 
+        used: tokenBalance.usedTokens, 
+        limit: tokenBalance.totalLimit 
+      });
+      return NextResponse.json(
+        { error: 'Sem tokens disponíveis' },
+        { status: 403 }
+      );
+    }
 
-    // Repassar a requisição para o bot externo
+    // Obter o corpo da requisição
+    const requestText = request.method !== 'GET' ? await request.text() : '';
+    
+    // Fazer a requisição para o bot
     const response = await fetch(`${botDetails.bot_website}${request.url.split('/proxy')[1]}`, {
       method: request.method,
       headers: {
@@ -153,49 +103,49 @@ export async function GET(
         'Origin': request.headers.get('origin') || 'http://localhost:3000',
         'Referer': request.headers.get('referer') || 'http://localhost:3000'
       },
-      body: request.method !== 'GET' ? await request.text() : undefined
+      body: requestText || undefined
     });
 
-    // Registrar uso de tokens na tabela token_usage
-    const { error: recordError } = await supabase
-      .from('token_usage')
-      .upsert({
-        user_id: payload.userId,
-        bot_id: botId,
-        tenant_id: payload.tenantId,
-        tokens_used: tokensUsed + 1,
-        total_tokens: tokensUsed + 1,
-        action_type: 'chat',
-        last_used: new Date().toISOString(),
-        request_timestamp: new Date().toISOString(),
-        response_timestamp: new Date().toISOString()
+    // Calcular tokens consumidos
+    const responseText = await response.text();
+    const requestTokens = calculateTokens(requestText);
+    const responseTokens = calculateTokens(responseText);
+    const totalTokens = requestTokens + responseTokens;
+
+    // Registrar uso de tokens
+    try {
+      const tokenRecord = await recordTokenUsage(
+        payload.userId,
+        payload.tenantId,
+        botId,
+        totalTokens,
+        'chat'
+      );
+
+      // Adicionar headers com informações de tokens
+      const headers = new Headers(response.headers);
+      headers.set('X-Tokens-Used-Request', requestTokens.toString());
+      headers.set('X-Tokens-Used-Response', responseTokens.toString());
+      headers.set('X-Tokens-Used-Total', totalTokens.toString());
+      headers.set('X-Total-Tokens', tokenRecord.totalTokens.toString());
+      headers.set('X-Remaining-Tokens', (botDetails.token_limit - tokenRecord.totalTokens).toString());
+      headers.set('X-Token-Limit', botDetails.token_limit.toString());
+
+      return new NextResponse(responseText, {
+        status: response.status,
+        statusText: response.statusText,
+        headers
       });
-
-    if (recordError) {
-      console.error('❌ Erro ao registrar uso de tokens:', recordError);
+    } catch (error) {
+      console.error('❌ Erro ao registrar tokens:', error);
+      const headers = new Headers(response.headers);
+      headers.set('X-Token-Registration-Error', 'true');
+      return new NextResponse(responseText, {
+        status: response.status,
+        statusText: response.statusText,
+        headers
+      });
     }
-
-    console.log('✅ Requisição repassada com sucesso');
-
-    // Se a resposta for um redirecionamento, seguir o redirecionamento
-    if (response.status === 301 || response.status === 302) {
-      const location = response.headers.get('location');
-      if (location) {
-        return NextResponse.redirect(location);
-      }
-    }
-
-    // Retornar resposta do bot
-    return new NextResponse(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: {
-        ...Object.fromEntries(response.headers),
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Internal-Token, X-Bot-Name, X-Admin-Email'
-      }
-    });
   } catch (error) {
     console.error('❌ Erro no proxy:', error);
     return NextResponse.json(
@@ -205,19 +155,117 @@ export async function GET(
   }
 }
 
-// Repassar outros métodos HTTP
+export async function GET(request: Request, { params }: { params: Promise<{ botId: string }> }) {
+  const { botId } = await params;
+  const { searchParams } = new URL(request.url);
+  const token = searchParams.get('token');
+
+  if (!token) {
+    console.error('❌ Token não fornecido');
+    return NextResponse.json(
+      { error: 'Token não fornecido' },
+      { status: 401 }
+    );
+  }
+
+  if (!botId) {
+    return NextResponse.json(
+      { error: 'ID do bot não fornecido' },
+      { status: 400 }
+    );
+  }
+
+  return processRequest(request, botId, token);
+}
+
 export async function POST(request: Request, { params }: { params: Promise<{ botId: string }> }) {
-  return GET(request, { params });
+  const { botId } = await params;
+  const { searchParams } = new URL(request.url);
+  const token = searchParams.get('token');
+
+  if (!token) {
+    console.error('❌ Token não fornecido');
+    return NextResponse.json(
+      { error: 'Token não fornecido' },
+      { status: 401 }
+    );
+  }
+
+  if (!botId) {
+    return NextResponse.json(
+      { error: 'ID do bot não fornecido' },
+      { status: 400 }
+    );
+  }
+
+  return processRequest(request, botId, token);
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ botId: string }> }) {
-  return GET(request, { params });
+  const { botId } = await params;
+  const { searchParams } = new URL(request.url);
+  const token = searchParams.get('token');
+
+  if (!token) {
+    console.error('❌ Token não fornecido');
+    return NextResponse.json(
+      { error: 'Token não fornecido' },
+      { status: 401 }
+    );
+  }
+
+  if (!botId) {
+    return NextResponse.json(
+      { error: 'ID do bot não fornecido' },
+      { status: 400 }
+    );
+  }
+
+  return processRequest(request, botId, token);
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ botId: string }> }) {
-  return GET(request, { params });
+  const { botId } = await params;
+  const { searchParams } = new URL(request.url);
+  const token = searchParams.get('token');
+
+  if (!token) {
+    console.error('❌ Token não fornecido');
+    return NextResponse.json(
+      { error: 'Token não fornecido' },
+      { status: 401 }
+    );
+  }
+
+  if (!botId) {
+    return NextResponse.json(
+      { error: 'ID do bot não fornecido' },
+      { status: 400 }
+    );
+  }
+
+  return processRequest(request, botId, token);
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ botId: string }> }) {
-  return GET(request, { params });
+  const { botId } = await params;
+  const { searchParams } = new URL(request.url);
+  const token = searchParams.get('token');
+
+  if (!token) {
+    console.error('❌ Token não fornecido');
+    return NextResponse.json(
+      { error: 'Token não fornecido' },
+      { status: 401 }
+    );
+  }
+
+  if (!botId) {
+    return NextResponse.json(
+      { error: 'ID do bot não fornecido' },
+      { status: 400 }
+    );
+  }
+
+  return processRequest(request, botId, token);
 }
