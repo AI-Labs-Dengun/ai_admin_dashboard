@@ -24,7 +24,9 @@ export async function POST(request: Request) {
     }
 
     // Verificar se o token foi revogado
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    
     const { data: revokedToken } = await supabase
       .from('revoked_tokens')
       .select('*')
