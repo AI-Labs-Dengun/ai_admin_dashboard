@@ -106,11 +106,15 @@ export const checkTokenBalance = async (userId: string, tenantId: string, botId:
   const supabase = createClientComponentClient();
   
   try {
-    // Buscar limite de tokens do bot
+    // Buscar limite de tokens do bot através da view user_bots_details
     const { data: botData, error: botError } = await supabase
-      .from('user_bots')
+      .from('user_bots_details')
       .select('token_limit')
-      .match({ bot_id: botId, tenant_id: tenantId })
+      .match({ 
+        bot_id: botId, 
+        tenant_id: tenantId,
+        user_id: userId
+      })
       .single();
 
     if (botError) throw botError;
@@ -118,13 +122,13 @@ export const checkTokenBalance = async (userId: string, tenantId: string, botId:
     // Buscar uso atual de tokens
     const { data: usageData, error: usageError } = await supabase
       .from('token_usage')
-      .select('tokens_used')
+      .select('total_tokens')
       .match({ user_id: userId, tenant_id: tenantId, bot_id: botId })
       .single();
 
     if (usageError && usageError.code !== 'PGRST116') throw usageError;
 
-    const tokensUsed = usageData?.tokens_used || 0;
+    const tokensUsed = usageData?.total_tokens || 0;
     const tokenLimit = botData?.token_limit || 0;
     const remainingTokens = tokenLimit - tokensUsed;
 
@@ -230,16 +234,12 @@ export const recordTokenUsage = async (
     }
 
     // Calcular novos valores
-    const currentTokensUsed = existingRecord?.tokens_used || 0;
     const currentTotalTokens = existingRecord?.total_tokens || 0;
-    const newTokensUsed = currentTokensUsed + tokensConsumed;
     const newTotalTokens = currentTotalTokens + tokensConsumed;
 
     console.log('📊 Tokens atuais:', {
-      currentTokensUsed,
       currentTotalTokens,
       newTokens: tokensConsumed,
-      newTokensUsed,
       newTotalTokens
     });
 
@@ -250,9 +250,7 @@ export const recordTokenUsage = async (
         user_id: userId,
         tenant_id: tenantId,
         bot_id: botId,
-        tokens_used: newTokensUsed,
         total_tokens: newTotalTokens,
-        action_type: actionType,
         last_used: new Date().toISOString(),
         created_at: existingRecord?.created_at || new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -273,45 +271,226 @@ export const recordTokenUsage = async (
       throw new Error('Falha ao registrar tokens: nenhum registro retornado');
     }
 
-    // Verificar se o registro foi atualizado corretamente
-    const { data: verifyRecord, error: verifyError } = await supabase
-      .from('token_usage')
-      .select('*')
-      .match({ 
-        user_id: userId, 
-        tenant_id: tenantId, 
-        bot_id: botId 
-      })
-      .single();
-
-    if (verifyError) {
-      console.error('❌ Erro ao verificar registro atualizado:', verifyError);
-      throw verifyError;
-    }
-
-    if (!verifyRecord || verifyRecord.tokens_used !== newTokensUsed || verifyRecord.total_tokens !== newTotalTokens) {
-      console.error('❌ Registro não foi atualizado corretamente:', {
-        expected: { tokens_used: newTokensUsed, total_tokens: newTotalTokens },
-        actual: verifyRecord
-      });
-      throw new Error('Falha ao verificar atualização de tokens');
-    }
-
     console.log('✅ Tokens registrados com sucesso:', {
-      previousTokens: currentTokensUsed,
+      previousTokens: currentTotalTokens,
       newTokens: tokensConsumed,
       totalTokens: newTotalTokens,
-      record: verifyRecord
+      record: newRecord
     });
 
     return {
-      previousTokens: currentTokensUsed,
+      previousTokens: currentTotalTokens,
       newTokens: tokensConsumed,
       totalTokens: newTotalTokens,
-      record: verifyRecord
+      record: newRecord
     };
   } catch (error) {
     console.error("❌ Erro ao registrar uso de tokens:", error);
     throw error;
   }
-}; 
+};
+
+// Versões para servidor (para usar nos route handlers)
+export const checkTokenBalanceServer = async (userId: string, tenantId: string, botId: string) => {
+  const supabase = createClientComponentClient();
+  
+  try {
+    console.log('🔍 Verificando saldo de tokens no servidor:', { userId, tenantId, botId });
+
+    // Buscar limite de tokens do bot através da view user_bots_details
+    const { data: botData, error: botError } = await supabase
+      .from('user_bots_details')
+      .select('token_limit, enabled, allow_bot_access')
+      .match({ 
+        bot_id: botId, 
+        tenant_id: tenantId,
+        user_id: userId
+      })
+      .single();
+
+    if (botError) {
+      console.error('❌ Erro ao buscar dados do bot:', botError);
+      throw botError;
+    }
+
+    if (!botData) {
+      console.error('❌ Bot não encontrado');
+      throw new Error('Bot não encontrado');
+    }
+
+    if (!botData.enabled) {
+      console.error('❌ Bot desativado');
+      throw new Error('Bot desativado');
+    }
+
+    if (!botData.allow_bot_access) {
+      console.error('❌ Acesso ao bot não permitido');
+      throw new Error('Acesso ao bot não permitido');
+    }
+
+    // Buscar uso atual de tokens
+    const { data: usageData, error: usageError } = await supabase
+      .from('token_usage')
+      .select('total_tokens, last_used')
+      .match({ user_id: userId, tenant_id: tenantId, bot_id: botId })
+      .single();
+
+    if (usageError && usageError.code !== 'PGRST116') {
+      console.error('❌ Erro ao buscar uso de tokens:', usageError);
+      throw usageError;
+    }
+
+    const tokensUsed = usageData?.total_tokens || 0;
+    const tokenLimit = botData?.token_limit || 0;
+    const remainingTokens = tokenLimit - tokensUsed;
+
+    console.log('📊 Resultado da verificação de tokens:', {
+      tokensUsed,
+      tokenLimit,
+      remainingTokens,
+      hasTokens: remainingTokens > 0,
+      lastUsed: usageData?.last_used
+    });
+
+    return {
+      hasTokens: remainingTokens > 0,
+      remainingTokens,
+      totalLimit: tokenLimit,
+      usedTokens: tokensUsed,
+      lastUsed: usageData?.last_used
+    };
+  } catch (error) {
+    console.error("❌ Erro ao verificar saldo de tokens no servidor:", error);
+    throw error;
+  }
+};
+
+export async function recordTokenUsageServer(
+  userId: string,
+  tenantId: string,
+  botId: string,
+  tokensConsumed: number,
+  actionType: 'chat' | 'summary' | 'image_generation' | 'test' | 'other'
+): Promise<any> {
+  const maxRetries = 3;
+  let retryCount = 0;
+  let lastError: Error | null = null;
+
+  while (retryCount < maxRetries) {
+    try {
+      console.log(`📝 Tentativa ${retryCount + 1} de registrar tokens no servidor:`, {
+        userId,
+        tenantId,
+        botId,
+        tokensConsumed,
+        actionType
+      });
+
+      const supabase = createClientComponentClient();
+
+      // Buscar registro existente com lock
+      const { data: existingRecord, error: fetchError } = await supabase
+        .from('token_usage')
+        .select('*')
+        .match({
+          user_id: userId,
+          tenant_id: tenantId,
+          bot_id: botId
+        })
+        .single();
+
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        throw fetchError;
+      }
+
+      const currentTotalTokens = existingRecord?.total_tokens || 0;
+      const newTotalTokens = currentTotalTokens + tokensConsumed;
+
+      console.log('📊 Calculando tokens:', {
+        currentTotalTokens,
+        newTokens: tokensConsumed,
+        newTotalTokens
+      });
+
+      // Se não existe registro, criar novo
+      if (!existingRecord) {
+        const { data: newRecord, error: insertError } = await supabase
+          .from('token_usage')
+          .insert({
+            user_id: userId,
+            tenant_id: tenantId,
+            bot_id: botId,
+            tokens_used: tokensConsumed,
+            total_tokens: newTotalTokens,
+            action_type: actionType,
+            request_timestamp: new Date().toISOString(),
+            response_timestamp: new Date().toISOString(),
+            last_used: new Date().toISOString()
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          throw insertError;
+        }
+
+        console.log('✅ Novo registro de tokens criado:', newRecord);
+        return newRecord;
+      }
+
+      // Se existe, atualizar com verificação de concorrência
+      const { data: updatedRecord, error: updateError } = await supabase
+        .from('token_usage')
+        .update({
+          tokens_used: tokensConsumed,
+          total_tokens: newTotalTokens,
+          action_type: actionType,
+          response_timestamp: new Date().toISOString(),
+          last_used: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .match({
+          user_id: userId,
+          tenant_id: tenantId,
+          bot_id: botId,
+          total_tokens: currentTotalTokens // Verificação de concorrência
+        })
+        .select()
+        .single();
+
+      if (updateError) {
+        if (updateError.code === 'PGRST116') {
+          // Concorrência detectada, tentar novamente
+          console.log('⚠️ Concorrência detectada, tentando novamente...');
+          retryCount++;
+          continue;
+        }
+        throw updateError;
+      }
+
+      if (!updatedRecord) {
+        // Se não houve atualização, provavelmente houve concorrência
+        console.log('⚠️ Nenhum registro atualizado, tentando novamente...');
+        retryCount++;
+        continue;
+      }
+
+      console.log('✅ Registro de tokens atualizado:', updatedRecord);
+      return updatedRecord;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error('Erro desconhecido');
+      console.error(`❌ Erro na tentativa ${retryCount + 1}:`, lastError);
+      
+      if (retryCount < maxRetries - 1) {
+        const delay = Math.pow(2, retryCount) * 1000;
+        console.log(`⏳ Aguardando ${delay}ms antes da próxima tentativa...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+      
+      retryCount++;
+    }
+  }
+
+  console.error('❌ Todas as tentativas falharam');
+  throw lastError || new Error('Falha ao registrar uso de tokens após várias tentativas');
+} 

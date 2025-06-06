@@ -46,6 +46,8 @@ export async function generateBotToken(userId: string, tenantId?: string, botId?
 export async function verifyBotToken(token: string): Promise<JwtPayload | null> {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    console.log('🔍 Verificando token:', { baseUrl });
+
     const response = await fetch(`${baseUrl}/api/auth/jwt`, {
       method: 'POST',
       headers: {
@@ -58,14 +60,15 @@ export async function verifyBotToken(token: string): Promise<JwtPayload | null> 
     });
 
     if (!response.ok) {
-      console.error('Erro na resposta da verificação do token:', await response.text());
+      console.error('❌ Erro na resposta da verificação do token:', await response.text());
       return null;
     }
 
     const data = await response.json();
+    console.log('✅ Token verificado com sucesso:', data.payload);
     return data.payload;
   } catch (error) {
-    console.error('Erro ao verificar token:', error);
+    console.error('❌ Erro ao verificar token:', error);
     return null;
   }
 }

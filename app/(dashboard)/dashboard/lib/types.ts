@@ -10,8 +10,28 @@ export interface Profile {
 }
 
 export interface TokenUsage {
+  id: string;
+  user_id: string;
+  tenant_id: string;
+  bot_id: string;
+  tokens_used: number;
   total_tokens: number;
+  action_type: 'chat' | 'summary' | 'image_generation' | 'test' | 'other';
+  request_timestamp: string;
+  response_timestamp: string;
   last_used: string;
+  created_at: string;
+  updated_at: string;
+  user_profile?: {
+    email: string;
+    full_name: string;
+  };
+  bot?: {
+    name: string;
+  };
+  tenant?: {
+    name: string;
+  };
 }
 
 export interface Bot {
