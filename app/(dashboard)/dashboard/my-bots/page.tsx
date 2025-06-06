@@ -49,6 +49,7 @@ interface UserBot {
   bots?: {
     website: string | null;
   };
+  current_token_usage?: number;
 }
 
 interface BotDetails {
@@ -71,6 +72,7 @@ export default function MyBotsPage() {
   const [accessingBot, setAccessingBot] = useState<string | null>(null);
   const [selectedBot, setSelectedBot] = useState<BotDetails | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [tokenUsageData, setTokenUsageData] = useState<Record<string, number>>({});
   const router = useRouter();
   const supabase = createClientComponentClient();
 
@@ -142,6 +144,32 @@ export default function MyBotsPage() {
     }
   };
 
+  const fetchTokenUsage = async (userId: string) => {
+    try {
+      console.log('🔍 Buscando uso de tokens para usuário:', userId);
+      
+      const { data: tokenUsage, error } = await supabase
+        .from('token_usage')
+        .select('bot_id, total_tokens')
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('❌ Erro ao buscar uso de tokens:', error);
+        return;
+      }
+
+      const usageMap: Record<string, number> = {};
+      tokenUsage?.forEach(usage => {
+        usageMap[usage.bot_id] = usage.total_tokens || 0;
+      });
+
+      console.log('✅ Uso de tokens carregado:', usageMap);
+      setTokenUsageData(usageMap);
+    } catch (error) {
+      console.error('❌ Erro ao carregar uso de tokens:', error);
+    }
+  };
+
   const fetchUserBots = async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -159,6 +187,9 @@ export default function MyBotsPage() {
 
       if (error) throw error;
       setUserBots(data || []);
+      
+      // Buscar uso de tokens após carregar os bots
+      await fetchTokenUsage(userId);
     } catch (error) {
       console.error('Erro ao carregar bots:', error);
       toast.error('Erro ao carregar bots');
@@ -355,6 +386,55 @@ export default function MyBotsPage() {
     }
   };
 
+  const handleTestTokens = async (botId: string, tenantId: string) => {
+    try {
+      console.log('🧪 Testando sistema de tokens:', { botId, tenantId });
+      setAccessingBot(botId);
+
+      const response = await fetch('/api/test-tokens', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          botId,
+          tenantId,
+          tokensToTest: 10
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error('❌ Erro no teste:', data.error);
+        toast.error(data.error || 'Erro ao testar tokens');
+        return;
+      }
+
+      console.log('✅ Teste de tokens bem-sucedido:', data);
+      toast.success(`Tokens testados com sucesso! ${data.test.tokensUsed} tokens consumidos.`);
+      
+      // Mostrar detalhes do teste
+      console.log('📊 Detalhes do teste:', {
+        antes: data.balanceBefore,
+        depois: data.balanceAfter,
+        diferença: data.balanceBefore.usedTokens - data.balanceAfter.usedTokens
+      });
+
+      // Recarregar dados de uso de tokens para mostrar atualização
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.id) {
+        await fetchTokenUsage(session.user.id);
+      }
+
+    } catch (error) {
+      console.error('❌ Erro ao testar tokens:', error);
+      toast.error('Erro ao testar sistema de tokens');
+    } finally {
+      setAccessingBot(null);
+    }
+  };
+
   const handleViewDetails = (bot: UserBot) => {
     setSelectedBot({
       id: bot.bot_id,
@@ -431,13 +511,16 @@ export default function MyBotsPage() {
               
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span>Limite de Tokens</span>
-                  <span>{bot.token_limit}</span>
+                  <span>Uso de Tokens</span>
+                  <span>{tokenUsageData[bot.bot_id] || 0} / {bot.token_limit}</span>
                 </div>
                 <Progress 
-                  value={getTokenUsagePercentage(0, bot.token_limit)} 
+                  value={getTokenUsagePercentage(tokenUsageData[bot.bot_id] || 0, bot.token_limit)} 
                   className="h-2"
                 />
+                <div className="text-xs text-muted-foreground">
+                  Restam: {bot.token_limit - (tokenUsageData[bot.bot_id] || 0)} tokens
+                </div>
               </div>
 
               <div className="mt-4 flex justify-between items-center">
@@ -451,6 +534,24 @@ export default function MyBotsPage() {
                     onClick={() => handleViewDetails(bot)}
                   >
                     <Info className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleTestTokens(bot.bot_id, bot.tenant_id)}
+                    disabled={!bot.enabled || accessingBot === bot.bot_id}
+                    title="Testar sistema de tokens"
+                  >
+                    {accessingBot === bot.bot_id ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Testando...
+                      </>
+                    ) : (
+                      <>
+                        🧪 Teste
+                      </>
+                    )}
                   </Button>
                   <Button
                     variant="default"
