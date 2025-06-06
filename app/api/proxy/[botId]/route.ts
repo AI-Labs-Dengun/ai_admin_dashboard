@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { verifyBotToken } from '@/app/(dashboard)/dashboard/lib/jwtManagement';
-import { checkTokenBalance, recordTokenUsage, calculateTokens } from '@/app/(dashboard)/dashboard/lib/tokenManagement';
+import { checkTokenBalanceServer, recordTokenUsageServer, calculateTokens } from '@/app/(dashboard)/dashboard/lib/tokenManagement';
 
 // Função auxiliar para criar o cliente Supabase
 const createSupabaseClient = () => {
@@ -76,7 +76,7 @@ async function processRequest(request: Request, botId: string, token: string) {
     }
 
     // Verificar saldo de tokens
-    const tokenBalance = await checkTokenBalance(payload.userId, payload.tenantId, botId);
+    const tokenBalance = await checkTokenBalanceServer(payload.userId, payload.tenantId, botId);
     if (!tokenBalance.hasTokens) {
       console.error('❌ Sem tokens disponíveis:', { 
         used: tokenBalance.usedTokens, 
@@ -112,9 +112,34 @@ async function processRequest(request: Request, botId: string, token: string) {
     const responseTokens = calculateTokens(responseText);
     const totalTokens = requestTokens + responseTokens;
 
+    console.log('📊 Tokens calculados:', {
+      requestTokens,
+      responseTokens,
+      totalTokens,
+      userId: payload.userId,
+      tenantId: payload.tenantId,
+      botId
+    });
+
+    // Verificar saldo antes do registro
+    const balanceBefore = await checkTokenBalanceServer(payload.userId, payload.tenantId, botId);
+    console.log('💰 Saldo antes do registro:', balanceBefore);
+
+    // Verificar se há tokens suficientes
+    if (balanceBefore.remainingTokens < totalTokens) {
+      console.error('❌ Saldo insuficiente de tokens:', {
+        required: totalTokens,
+        available: balanceBefore.remainingTokens
+      });
+      return NextResponse.json(
+        { error: 'Saldo insuficiente de tokens' },
+        { status: 402 }
+      );
+    }
+
     // Registrar uso de tokens
     try {
-      const tokenRecord = await recordTokenUsage(
+      const tokenRecord = await recordTokenUsageServer(
         payload.userId,
         payload.tenantId,
         botId,
@@ -122,14 +147,32 @@ async function processRequest(request: Request, botId: string, token: string) {
         'chat'
       );
 
+      // Verificar saldo depois do registro
+      const balanceAfter = await checkTokenBalanceServer(payload.userId, payload.tenantId, botId);
+      console.log('💰 Saldo depois do registro:', balanceAfter);
+
+      // Verificar se o registro foi bem sucedido
+      if (!tokenRecord || tokenRecord.total_tokens !== balanceAfter.usedTokens) {
+        console.error('❌ Inconsistência no registro de tokens:', {
+          tokenRecord,
+          balanceAfter
+        });
+        return NextResponse.json(
+          { error: 'Erro ao registrar tokens' },
+          { status: 500 }
+        );
+      }
+
       // Adicionar headers com informações de tokens
       const headers = new Headers(response.headers);
       headers.set('X-Tokens-Used-Request', requestTokens.toString());
       headers.set('X-Tokens-Used-Response', responseTokens.toString());
       headers.set('X-Tokens-Used-Total', totalTokens.toString());
-      headers.set('X-Total-Tokens', tokenRecord.totalTokens.toString());
-      headers.set('X-Remaining-Tokens', (botDetails.token_limit - tokenRecord.totalTokens).toString());
+      headers.set('X-Total-Tokens', tokenRecord.total_tokens.toString());
+      headers.set('X-Remaining-Tokens', (botDetails.token_limit - tokenRecord.total_tokens).toString());
       headers.set('X-Token-Limit', botDetails.token_limit.toString());
+      headers.set('X-Token-Balance-Before', balanceBefore.remainingTokens.toString());
+      headers.set('X-Token-Balance-After', balanceAfter.remainingTokens.toString());
 
       return new NextResponse(responseText, {
         status: response.status,
@@ -140,6 +183,7 @@ async function processRequest(request: Request, botId: string, token: string) {
       console.error('❌ Erro ao registrar tokens:', error);
       const headers = new Headers(response.headers);
       headers.set('X-Token-Registration-Error', 'true');
+      headers.set('X-Token-Error-Details', error instanceof Error ? error.message : 'Erro desconhecido');
       return new NextResponse(responseText, {
         status: response.status,
         statusText: response.statusText,
