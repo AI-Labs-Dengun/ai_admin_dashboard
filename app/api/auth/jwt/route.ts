@@ -17,7 +17,7 @@ interface JwtPayload extends JWTPayload {
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
 // Função para carregar a chave privada
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     if (action === 'generate') {
       // Se não houver tenantId, é um bot do sistema
       if (!tenantId) {
-        console.log('Gerando token para bot do sistema');
+        console.log('🔑 Gerando token para bot do sistema');
         const payload: JwtPayload = {
           userId,
           botId: botId || 'system',
@@ -69,11 +69,12 @@ export async function POST(request: Request) {
           })
           .sign(privateKey);
 
+        console.log('✅ Token gerado com sucesso para bot do sistema');
         return NextResponse.json({ token: generatedToken });
       }
 
       // Para bots associados a tenants
-      console.log('Buscando dados do token para tenant');
+      console.log('🔍 Buscando dados do token para tenant');
       const { data: tokenData, error: tokenError } = await supabase
         .from('jwt_token_data')
         .select('*')
@@ -82,21 +83,21 @@ export async function POST(request: Request) {
         .single();
 
       if (tokenError) {
-        console.error('Erro ao buscar dados do token:', tokenError);
+        console.error('❌ Erro ao buscar dados do token:', tokenError);
         throw new Error(`Erro ao buscar informações do usuário: ${tokenError.message}`);
       }
 
       if (!tokenData) {
-        console.error('Usuário não encontrado na view jwt_token_data');
+        console.error('❌ Usuário não encontrado na view jwt_token_data');
         throw new Error('Usuário não encontrado no tenant');
       }
 
       if (!tokenData.allow_bot_access) {
-        console.error('Usuário não tem permissão para acessar bots');
+        console.error('❌ Usuário não tem permissão para acessar bots');
         throw new Error('Usuário não tem permissão para acessar bots');
       }
 
-      console.log('Dados do token encontrados:', { 
+      console.log('✅ Dados do token encontrados:', { 
         userId: tokenData.user_id,
         tenantId: tokenData.tenant_id,
         allowBotAccess: tokenData.allow_bot_access,
@@ -105,8 +106,8 @@ export async function POST(request: Request) {
       });
 
       const payload: JwtPayload = {
-        userId,
-        tenantId,
+        userId: tokenData.user_id,
+        tenantId: tokenData.tenant_id,
         botId: botId || 'tenant',
         botAccess: tokenData.enabled_bots || [],
         allowBotAccess: tokenData.allow_bot_access,
@@ -123,18 +124,34 @@ export async function POST(request: Request) {
         })
         .sign(privateKey);
 
-      console.log('Token gerado com sucesso');
+      console.log('✅ Token gerado com sucesso para tenant');
       return NextResponse.json({ token: generatedToken });
     }
 
     if (action === 'verify') {
       if (!token) {
+        console.error('❌ Token não fornecido');
         return NextResponse.json({ error: 'Token não fornecido' }, { status: 400 });
       }
 
-      const publicKey = loadPublicKey();
-      const { payload } = await jwtVerify(token, publicKey);
-      return NextResponse.json({ payload });
+      try {
+        const publicKey = loadPublicKey();
+        console.log('🔑 Chave pública carregada');
+
+        const { payload } = await jwtVerify(token, publicKey);
+        console.log('✅ Token verificado com sucesso:', payload);
+
+        // Garantir que o payload tenha os campos necessários
+        if (!payload.userId || !payload.tenantId) {
+          console.error('❌ Payload inválido:', payload);
+          return NextResponse.json({ error: 'Token inválido: dados incompletos' }, { status: 401 });
+        }
+
+        return NextResponse.json({ payload });
+      } catch (error) {
+        console.error('❌ Erro ao verificar token:', error);
+        return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
+      }
     }
 
     if (action === 'check-access') {
