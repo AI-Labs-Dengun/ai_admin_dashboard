@@ -131,7 +131,11 @@ export type Database = {
           user_id: string
           tenant_id: string
           bot_id: string
+          tokens_used: number
           total_tokens: number
+          action_type: 'chat' | 'summary' | 'image_generation' | 'test' | 'other'
+          request_timestamp: string
+          response_timestamp: string
           last_used: string
           created_at: string
           updated_at: string
@@ -141,7 +145,11 @@ export type Database = {
           user_id: string
           tenant_id: string
           bot_id: string
+          tokens_used?: number
           total_tokens?: number
+          action_type?: 'chat' | 'summary' | 'image_generation' | 'test' | 'other'
+          request_timestamp?: string
+          response_timestamp?: string
           last_used?: string
           created_at?: string
           updated_at?: string
@@ -151,7 +159,11 @@ export type Database = {
           user_id?: string
           tenant_id?: string
           bot_id?: string
+          tokens_used?: number
           total_tokens?: number
+          action_type?: 'chat' | 'summary' | 'image_generation' | 'test' | 'other'
+          request_timestamp?: string
+          response_timestamp?: string
           last_used?: string
           created_at?: string
           updated_at?: string
