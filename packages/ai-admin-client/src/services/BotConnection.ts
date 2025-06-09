@@ -10,7 +10,19 @@ export class BotConnection {
   constructor(config: BotConfig) {
     this.config = ConfigManager.getInstance(config);
     this.httpClient = new BotHttpClient(this.config);
-    this.telemetry = TelemetryService.getInstance(config);
+    
+    // Mapear config para o formato esperado pelo TelemetryService
+    const telemetryConfig = {
+      baseUrl: config.apiUrl,
+      apiUrl: config.apiUrl,
+      botId: config.botId,
+      token: config.token,
+      userId: config.userId || '',
+      tenantId: config.tenantId || '',
+      options: config.options
+    };
+    
+    this.telemetry = TelemetryService.getInstance(telemetryConfig);
   }
 
   public async ping(): Promise<boolean> {
@@ -23,14 +35,34 @@ export class BotConnection {
     }
   }
 
+  public async sendMessage(message: string, chatId?: string): Promise<any> {
+    try {
+      const response = await this.httpClient.sendMessage({
+        message,
+        chat_id: chatId
+      });
+      
+      // Reportar uso de tokens através da telemetria se disponível na resposta
+      if (response.token_usage?.used) {
+        await this.telemetry.reportTokenUsage(
+          response.token_usage.used,
+          'chat',
+          chatId
+        );
+      }
+      
+      return response;
+    } catch (error) {
+      console.error('Erro ao enviar mensagem:', error);
+      throw error;
+    }
+  }
+
   public async getTokenUsage(): Promise<any> {
     try {
-      return await this.httpClient.reportTokenUsage({
-        tokens_used: 0,
-        action_type: 'check'
-      });
+      return await this.httpClient.getStatus();
     } catch (error) {
-      console.error('Erro ao obter uso de tokens:', error);
+      console.error('Erro ao obter status de tokens:', error);
       throw error;
     }
   }
@@ -42,14 +74,7 @@ export class BotConnection {
         error_code: error.name
       });
 
-      await this.telemetry.reportError({
-        type: 'error',
-        message: error.message,
-        data: {
-          ...context,
-          stack: error.stack
-        }
-      });
+      await this.telemetry.reportError(error, context);
     } catch (reportError) {
       console.error('Erro ao reportar erro:', reportError);
     }
@@ -58,7 +83,7 @@ export class BotConnection {
   public async stop(): Promise<void> {
     try {
       await this.httpClient.updateStatus('offline');
-      await this.telemetry.flush();
+      await this.telemetry.stop();
     } catch (error) {
       console.error('Erro ao parar conexão:', error);
     }

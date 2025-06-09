@@ -25,6 +25,7 @@ export class TelemetryService {
   private batchSize: number = 100;
   private flushInterval: number = 60000; // 1 minuto
   private timer: NodeJS.Timeout | null = null;
+  private tokenUsage: Map<string, number> = new Map(); // Map<tenantId, tokens>
 
   private constructor(config: BotConfig) {
     this.config = config;
@@ -53,7 +54,10 @@ export class TelemetryService {
         stack: error.stack,
         ...context
       },
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      botId: this.config.botId,
+      tenantId: this.config.tenantId,
+      userId: this.config.userId
     };
     await this.queueEvent(event);
   }
@@ -63,7 +67,10 @@ export class TelemetryService {
       type: 'warning',
       message,
       data,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      botId: this.config.botId,
+      tenantId: this.config.tenantId,
+      userId: this.config.userId
     };
     await this.queueEvent(event);
   }
@@ -73,16 +80,49 @@ export class TelemetryService {
       type: 'info',
       message,
       data,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      botId: this.config.botId,
+      tenantId: this.config.tenantId,
+      userId: this.config.userId
     };
     await this.queueEvent(event);
+  }
+
+  public async reportTokenUsage(tokens: number, actionType: string, chatId?: string) {
+    // Atualizar contador local
+    const currentUsage = this.tokenUsage.get(this.config.tenantId) || 0;
+    this.tokenUsage.set(this.config.tenantId, currentUsage + tokens);
+
+    // Reportar métrica
+    await this.reportMetric({
+      name: 'token_usage',
+      value: tokens,
+      tags: {
+        action_type: actionType,
+        chat_id: chatId || 'unknown'
+      },
+      timestamp: Date.now()
+    });
+
+    // Reportar evento
+    await this.reportInfo('Token usage', {
+      tokens_used: tokens,
+      action_type: actionType,
+      chat_id: chatId,
+      total_tokens: currentUsage + tokens
+    });
   }
 
   public async reportMetric(metric: MetricData) {
     const event: TelemetryEvent = {
       type: 'metric',
       message: metric.name,
-      data: metric,
+      data: {
+        ...metric,
+        botId: this.config.botId,
+        tenantId: this.config.tenantId,
+        userId: this.config.userId
+      },
       timestamp: Date.now()
     };
     await this.queueEvent(event);
@@ -98,12 +138,12 @@ export class TelemetryService {
   private async flush() {
     if (this.queue.length === 0) return;
 
-    try {
-      const events = [...this.queue];
-      this.queue = [];
+    const eventsToSend = [...this.queue];
+    this.queue = [];
 
+    try {
       await axios.post(`${this.config.baseUrl}/api/bots/telemetry`, {
-        events
+        events: eventsToSend
       }, {
         headers: {
           'Authorization': `Bearer ${this.config.token}`
@@ -112,7 +152,7 @@ export class TelemetryService {
     } catch (error) {
       console.error('Erro ao enviar telemetria:', error);
       // Recolocar eventos na fila em caso de erro
-      this.queue = [...this.queue, ...events];
+      this.queue = [...this.queue, ...eventsToSend];
     }
   }
 
@@ -151,6 +191,10 @@ export class TelemetryService {
       console.error('Erro ao obter erros:', error);
       throw error;
     }
+  }
+
+  public getTokenUsage(tenantId: string): number {
+    return this.tokenUsage.get(tenantId) || 0;
   }
 
   public stop() {

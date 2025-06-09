@@ -1,8 +1,16 @@
 export interface BotConfig {
   baseUrl: string;
+  apiUrl: string;
+  botId: string;
   token: string;
   userId: string;
   tenantId: string;
+  options?: {
+    retryAttempts?: number;
+    retryDelay?: number;
+    timeout?: number;
+    debug?: boolean;
+  };
 }
 
 export interface TokenResponse {
