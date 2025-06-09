@@ -29,3 +29,7 @@ next-env.d.ts
 
 # Supabase
 SCHEMA-SUPABASE.md
+md/ 
+
+public.key
+private.key
