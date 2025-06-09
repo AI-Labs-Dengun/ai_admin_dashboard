@@ -11,7 +11,7 @@ BOT_NAME="no_login_assistant"
 BOT_DESCRIPTION="chat Bot"
 BOT_CAPABILITIES="chat"
 BOT_CONTACT_EMAIL="ai@dengun.com"
-BOT_WEBSITE="https://no-login-assistant.vercel.app/"
+BOT_WEBSITE="https://no-login-assistant-git-admindashboard-ai-denguns-projects.vercel.app/"
 MAX_TOKENS_PER_REQUEST=1000
 
 # Configurações do Dashboard
