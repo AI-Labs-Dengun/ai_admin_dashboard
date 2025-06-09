@@ -71,4 +71,46 @@ export interface BotSessionResponse {
   sessionId: string;
   status: 'active' | 'expired' | 'invalid';
   expiresAt: Date;
+}
+
+export interface TelemetryEvent {
+  type: 'error' | 'warning' | 'info' | 'metric';
+  message: string;
+  data?: any;
+  timestamp: number;
+  botId?: string;
+  tenantId?: string;
+  userId?: string;
+}
+
+export interface MetricData {
+  name: string;
+  value: number;
+  tags?: Record<string, string>;
+  timestamp: number;
+}
+
+export interface TelemetryResponse {
+  success: boolean;
+  message?: string;
+  data?: any;
+}
+
+export interface MetricResponse {
+  name: string;
+  values: Array<{
+    timestamp: number;
+    value: number;
+  }>;
+  tags?: Record<string, string>;
+}
+
+export interface ErrorReport {
+  error: string;
+  stack?: string;
+  context?: any;
+  timestamp: number;
+  botId?: string;
+  tenantId?: string;
+  userId?: string;
 } 
