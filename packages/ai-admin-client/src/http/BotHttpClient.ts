@@ -1,10 +1,13 @@
 import { ConfigManager } from '../config';
+import { TokenValidator } from '../services/TokenValidator';
 
 export class BotHttpClient {
   private config: ConfigManager;
+  private tokenValidator: TokenValidator;
 
   constructor(config: ConfigManager) {
     this.config = config;
+    this.tokenValidator = TokenValidator.getInstance();
   }
 
   private async request<T>(
@@ -15,12 +18,27 @@ export class BotHttpClient {
     const url = `${this.config.getApiUrl()}/api/bots/${endpoint}`;
     const token = this.config.getToken();
 
+    // Validar token antes de fazer a requisição
+    const validation = await this.tokenValidator.validateToken(token, {
+      requireBotId: true,
+      requireTenantId: true
+    });
+
+    if (!validation.valid) {
+      throw new Error(`Token inválido: ${validation.error}`);
+    }
+
+    const { botId, tenantId, userId } = validation.payload;
+
     try {
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
-          'x-bot-token': token
+          'x-bot-token': token,
+          'x-bot-id': botId,
+          'x-bot-tenant-id': tenantId,
+          'x-bot-user-id': userId
         },
         body: data ? JSON.stringify(data) : undefined
       });
@@ -39,16 +57,15 @@ export class BotHttpClient {
     }
   }
 
-  public async reportTokenUsage(data: {
-    tokens_used: number;
-    action_type: string;
+  public async sendMessage(data: {
+    message: string;
     chat_id?: string;
-    chat_summary?: string;
-    chat_content?: string;
-    request_timestamp?: string;
-    response_timestamp?: string;
   }): Promise<any> {
-    return this.request('token-usage', 'POST', data);
+    return this.request('chat', 'POST', data);
+  }
+
+  public async getStatus(): Promise<any> {
+    return this.request('status', 'GET');
   }
 
   public async reportError(data: {

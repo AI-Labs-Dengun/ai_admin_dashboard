@@ -2,6 +2,8 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { verifyBotToken } from '@/app/dashboard/lib/jwtManagement';
+import { botMiddleware } from '../middleware';
+import { TokenService } from '@/app/services/TokenService';
 
 export async function POST(request: Request) {
   try {
@@ -61,6 +63,62 @@ export async function POST(request: Request) {
     console.error('Erro ao processar requisição:', error);
     return NextResponse.json(
       { error: 'Erro interno do servidor' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET(request: Request) {
+  try {
+    // Aplicar middleware
+    const middlewareResponse = await botMiddleware(request);
+    if (middlewareResponse instanceof NextResponse) {
+      return middlewareResponse;
+    }
+
+    // Obter dados do token do header
+    const userId = request.headers.get('x-bot-user-id');
+    const tenantId = request.headers.get('x-bot-tenant-id');
+    const botId = request.headers.get('x-bot-id');
+
+    if (!userId || !tenantId || !botId) {
+      return NextResponse.json(
+        { error: 'Dados do usuário não encontrados' },
+        { status: 400 }
+      );
+    }
+
+    // Obter informações de tokens
+    const tokenService = TokenService.getInstance();
+    const { limit, used, remaining } = await tokenService.checkLimit(
+      userId,
+      tenantId,
+      botId
+    );
+
+    // Obter histórico
+    const { history } = await tokenService.getHistory(
+      userId,
+      tenantId,
+      botId
+    );
+
+    return NextResponse.json({
+      success: true,
+      status: 'active',
+      token_usage: {
+        limit,
+        used,
+        remaining,
+        percentage_used: Math.round((used / limit) * 100),
+        can_use: remaining > 0
+      },
+      recent_usage: history.slice(0, 10) // últimos 10 registros
+    });
+  } catch (error) {
+    console.error('Erro ao obter status:', error);
+    return NextResponse.json(
+      { error: 'Erro ao obter status' },
       { status: 500 }
     );
   }

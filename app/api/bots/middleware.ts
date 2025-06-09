@@ -1,55 +1,60 @@
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
-import { verifyBotToken } from '@/app/dashboard/lib/jwtManagement';
 
-export async function botMiddleware(request: NextRequest) {
+export async function botMiddleware(request: Request) {
   try {
-    // Obter token da URL ou do header
-    const token = request.nextUrl.searchParams.get('token') || 
-                 request.headers.get('x-bot-token');
+    const supabase = createRouteHandlerClient({ cookies });
 
-    if (!token) {
+    // Obter dados do token do header
+    const userId = request.headers.get('x-bot-user-id');
+    const tenantId = request.headers.get('x-bot-tenant-id');
+    const botId = request.headers.get('x-bot-id');
+    const token = request.headers.get('x-bot-token');
+
+    if (!userId || !tenantId || !botId || !token) {
       return NextResponse.json(
-        { error: 'Token não fornecido' },
-        { status: 401 }
+        { error: 'Headers obrigatórios não fornecidos' },
+        { status: 400 }
       );
     }
 
-    // Validar token
-    const tokenData = await verifyBotToken(token);
-    if (!tokenData) {
+    // Verificar se o usuário tem acesso ao tenant
+    const { data: userTenant, error: userTenantError } = await supabase
+      .from('user_tenants')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (userTenantError || !userTenant) {
       return NextResponse.json(
-        { error: 'Token inválido ou expirado' },
-        { status: 401 }
+        { error: 'Usuário não tem acesso a este tenant' },
+        { status: 403 }
       );
     }
 
-    // Adicionar dados do token ao request
-    const requestWithToken = new NextRequest(request.url, {
-      headers: request.headers,
-      method: request.method,
-      body: request.body,
-      cache: request.cache,
-      credentials: request.credentials,
-      integrity: request.integrity,
-      keepalive: request.keepalive,
-      mode: request.mode,
-      redirect: request.redirect,
-      referrer: request.referrer,
-      referrerPolicy: request.referrerPolicy,
-      signal: request.signal,
-    });
+    // Verificar se o bot está ativo para o tenant
+    const { data: botRegistration, error: botError } = await supabase
+      .from('bot_registrations')
+      .select('*')
+      .eq('bot_id', botId)
+      .eq('tenant_id', tenantId)
+      .single();
 
-    // Adicionar dados do token como headers
-    requestWithToken.headers.set('x-bot-user-id', tokenData.userId);
-    requestWithToken.headers.set('x-bot-tenant-id', tokenData.tenantId);
-    requestWithToken.headers.set('x-bot-id', tokenData.botId);
+    if (botError || !botRegistration || botRegistration.status !== 'active') {
+      return NextResponse.json(
+        { error: 'Bot não está ativo para este tenant' },
+        { status: 403 }
+      );
+    }
 
-    return requestWithToken;
+    // Middleware passou - retornar null para continuar processamento
+    return null;
   } catch (error) {
-    console.error('Erro no middleware do bot:', error);
+    console.error('Erro no middleware:', error);
     return NextResponse.json(
-      { error: 'Erro ao processar requisição' },
+      { error: 'Erro interno do servidor' },
       { status: 500 }
     );
   }
