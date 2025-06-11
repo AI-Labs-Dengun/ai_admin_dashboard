@@ -2,13 +2,30 @@
 
 import fs from 'fs';
 import path from 'path';
+import axios from 'axios';
 
 /**
- * Script de inicialização completa - Setup para integração com AI Admin Dashboard
- * Cria toda a estrutura necessária para conectar app externa ao dashboard
+ * Script de inicialização completa - Setup automatizado para integração com AI Admin Dashboard
+ * Workflow: instala -> inicializa com parâmetros -> solicita conexão automaticamente
  */
 
 const CONFIG_DIR = 'ai-admin-config';
+
+interface InitOptions {
+  botName: string;
+  email: string;
+  capabilities: string[];
+  botUrl: string;
+  dashboardUrl?: string;
+}
+
+interface BotRequestResponse {
+  requestId: string;
+  status: 'pending' | 'approved' | 'rejected';
+  botId?: string;
+  botSecret?: string;
+  message?: string;
+}
 
 // Detectar se é projeto Next.js
 function isNextJsProject(): boolean {
@@ -30,24 +47,202 @@ function isExpressProject(): boolean {
   return false;
 }
 
-function createEnvFile() {
+function parseArguments(): InitOptions {
+  const args = process.argv.slice(2);
+  const options: Partial<InitOptions> = {};
+
+  for (let i = 0; i < args.length; i += 2) {
+    const key = args[i];
+    const value = args[i + 1];
+
+    switch (key) {
+      case '--name':
+        options.botName = value;
+        break;
+      case '--email':
+        options.email = value;
+        break;
+      case '--capabilities':
+        options.capabilities = value.split(',').map(c => c.trim());
+        break;
+      case '--url':
+        options.botUrl = value;
+        break;
+      case '--dashboard-url':
+        options.dashboardUrl = value;
+        break;
+      case '--help':
+        showHelp();
+        process.exit(0);
+    }
+  }
+
+  return options as InitOptions;
+}
+
+function showHelp() {
+  console.log(`
+🚀 AI Admin Init - Inicialização Automatizada
+
+Uso:
+  npx ai-admin-init [opções]
+
+Opções obrigatórias:
+  --name <nome>           Nome do seu bot
+  --email <email>         Email da sua conta
+  --capabilities <list>   Competências separadas por vírgula (ex: chat,image,text)
+  --url <url>            URL do seu bot/aplicação
+
+Opções opcionais:
+  --dashboard-url <url>   URL do dashboard (padrão: http://localhost:3000)
+
+Exemplos:
+  # Inicialização básica
+  npx ai-admin-init \\
+    --name "Meu ChatBot" \\
+    --email "admin@empresa.com" \\
+    --capabilities "chat,text" \\
+    --url "http://localhost:3001"
+
+  # Com dashboard customizado
+  npx ai-admin-init \\
+    --name "Bot Avançado" \\
+    --email "admin@empresa.com" \\
+    --capabilities "chat,image,text,voice" \\
+    --url "https://meubot.com" \\
+    --dashboard-url "https://dashboard.empresa.com"
+
+Capabilities disponíveis:
+  - chat: Conversação via chat
+  - text: Processamento de texto
+  - image: Geração/análise de imagens
+  - voice: Processamento de voz
+  - code: Geração de código
+  - search: Busca e pesquisa
+`);
+}
+
+function validateOptions(options: InitOptions): string[] {
+  const errors: string[] = [];
+
+  if (!options.botName) {
+    errors.push('Nome do bot é obrigatório (--name)');
+  }
+
+  if (!options.email) {
+    errors.push('Email é obrigatório (--email)');
+  }
+
+  if (options.email && !isValidEmail(options.email)) {
+    errors.push('Email inválido');
+  }
+
+  if (!options.capabilities || options.capabilities.length === 0) {
+    errors.push('Competências são obrigatórias (--capabilities)');
+  }
+
+  if (!options.botUrl) {
+    errors.push('URL do bot é obrigatória (--url)');
+  }
+
+  if (options.botUrl && !isValidUrl(options.botUrl)) {
+    errors.push('URL do bot inválida');
+  }
+
+  const validCapabilities = ['chat', 'text', 'image', 'voice', 'code', 'search'];
+  const invalidCapabilities = options.capabilities?.filter(cap => !validCapabilities.includes(cap));
+  if (invalidCapabilities && invalidCapabilities.length > 0) {
+    errors.push(`Competências inválidas: ${invalidCapabilities.join(', ')}`);
+  }
+
+  return errors;
+}
+
+function isValidEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
+
+function isValidUrl(url: string): boolean {
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function sendConnectionRequest(options: InitOptions): Promise<BotRequestResponse> {
+  const dashboardUrl = options.dashboardUrl || 'http://localhost:3000';
+  
+  console.log(`📡 Enviando solicitação de conexão para: ${dashboardUrl}`);
+  
+  try {
+    const response = await axios.post(`${dashboardUrl}/api/bots/request`, {
+      name: options.botName,
+      description: `Bot ${options.botName} - ${options.capabilities.join(', ')}`,
+      capabilities: options.capabilities,
+      contactEmail: options.email,
+      website: options.botUrl,
+      maxTokensPerRequest: 2000,
+      metadata: {
+        source: 'ai-admin-client',
+        clientVersion: '2.0.0',
+        environment: process.env.NODE_ENV || 'development',
+        autoSetup: true
+      }
+    }, {
+      timeout: 15000,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      if (error.response) {
+        throw new Error(`Erro do dashboard (${error.response.status}): ${error.response.data?.error || error.message}`);
+      } else if (error.request) {
+        throw new Error(`Dashboard não acessível em ${dashboardUrl}. Verifique se está rodando.`);
+      }
+    }
+    throw new Error(`Erro inesperado: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function createEnvFile(options: InitOptions, connectionResult?: BotRequestResponse) {
   const envContent = `# ========================================
-# AI ADMIN DASHBOARD - CONFIGURAÇÃO
+# AI ADMIN DASHBOARD - CONFIGURAÇÃO AUTOMÁTICA
 # ========================================
+# GERADO AUTOMATICAMENTE - NÃO EDITAR MANUALMENTE
+# Para reconfigurar, execute: npx ai-admin-init novamente
 
-# 🔗 CONEXÃO COM DASHBOARD (Obrigatório)
-DASHBOARD_URL=http://localhost:3000
-BOT_ID=seu-bot-id
-BOT_SECRET=seu-bot-secret
+# 🤖 INFORMAÇÕES DO BOT
+BOT_NAME=${options.botName}
+BOT_DESCRIPTION=Bot ${options.botName} - ${options.capabilities.join(', ')}
+BOT_VERSION=1.0.0
+BOT_AUTHOR=Criado via ai-admin-init
+BOT_WEBSITE=${options.botUrl}
+BOT_CAPABILITIES=${options.capabilities.join(',')}
 
-# ⚙️ CONFIGURAÇÕES AUTOMÁTICAS (Opcional)
+# 🔗 CONEXÃO COM DASHBOARD
+DASHBOARD_URL=${options.dashboardUrl || 'http://localhost:3000'}
+${connectionResult?.botId ? `BOT_ID=${connectionResult.botId}` : '# BOT_ID=aguardando-aprovacao'}
+${connectionResult?.botSecret ? `BOT_SECRET=${connectionResult.botSecret}` : '# BOT_SECRET=aguardando-aprovacao'}
+
+# 📊 STATUS DA CONEXÃO
+CONNECTION_STATUS=${connectionResult?.status || 'pending'}
+${connectionResult?.requestId ? `REQUEST_ID=${connectionResult.requestId}` : ''}
+SETUP_DATE=${new Date().toISOString()}
+
+# ⚙️ CONFIGURAÇÕES AUTOMÁTICAS
 AUTO_REPORT_USAGE=true
 AUTO_REPORT_ERRORS=true
 REPORT_INTERVAL=30000
 DEBUG=false
 
 # 🔐 CONFIGURAÇÕES DE SEGURANÇA
-JWT_SECRET=your-jwt-secret-here
 API_TIMEOUT=10000
 MAX_RETRIES=3
 
@@ -64,12 +259,40 @@ PORT=3001
   const envPath = path.join(process.cwd(), CONFIG_DIR, '.env');
   const envExamplePath = path.join(process.cwd(), CONFIG_DIR, '.env.example');
   
+  // Criar .env
   fs.writeFileSync(envPath, envContent);
-  fs.writeFileSync(envExamplePath, envContent);
   
-  console.log('✅ Arquivos de ambiente criados:');
-  console.log('   - ai-admin-config/.env');
-  console.log('   - ai-admin-config/.env.example');
+  // Criar .env.example (sem dados sensíveis)
+  const exampleContent = envContent
+    .replace(/BOT_ID=.*/g, 'BOT_ID=seu-bot-id-aqui')
+    .replace(/BOT_SECRET=.*/g, 'BOT_SECRET=seu-bot-secret-aqui')
+    .replace(/REQUEST_ID=.*/g, 'REQUEST_ID=id-da-solicitacao');
+  
+  fs.writeFileSync(envExamplePath, exampleContent);
+  
+  console.log('✅ Arquivos de configuração criados:');
+  console.log('   - ai-admin-config/.env (configuração completa)');
+  console.log('   - ai-admin-config/.env.example (template público)');
+}
+
+function createGitignore() {
+  const gitignorePath = path.join(process.cwd(), CONFIG_DIR, '.gitignore');
+  const gitignoreContent = `# AI Admin Client - Arquivos sensíveis
+# NUNCA commitar estes arquivos!
+
+.env
+bot-request.json
+*.log
+*.secret
+
+# Manter apenas
+!.env.example
+!README.md
+!package.json
+`;
+
+  fs.writeFileSync(gitignorePath, gitignoreContent);
+  console.log('✅ .gitignore criado para proteger arquivos sensíveis');
 }
 
 function createClientSetup() {
@@ -78,6 +301,17 @@ import dotenv from 'dotenv';
 
 // Carregar variáveis de ambiente
 dotenv.config();
+
+// Verificar se o bot foi aprovado
+if (!process.env.BOT_ID || !process.env.BOT_SECRET) {
+  if (process.env.CONNECTION_STATUS === 'pending') {
+    console.log('⏳ Bot ainda não foi aprovado. Aguarde a aprovação do administrador.');
+    console.log(\`📧 Solicitação enviada para: \${process.env.DASHBOARD_URL}\`);
+    console.log(\`🆔 ID da solicitação: \${process.env.REQUEST_ID}\`);
+  } else {
+    console.log('❌ Configuração incompleta. Execute: npx ai-admin-init');
+  }
+}
 
 // Configuração do cliente AI Admin
 export const aiAdminClient = new AiAdminClient({
@@ -98,60 +332,75 @@ export const aiAdminClient = new AiAdminClient({
 let isInitialized = false;
 
 export async function initializeAiAdmin(): Promise<AiAdminClient> {
+  if (!process.env.BOT_ID || !process.env.BOT_SECRET) {
+    throw new Error('Bot não aprovado ainda. Verifique o status no dashboard.');
+  }
+
   if (!isInitialized) {
     try {
       await aiAdminClient.initialize();
       isInitialized = true;
-      console.log('🚀 AI Admin Client inicializado com sucesso');
+      console.log(\`🚀 \${process.env.BOT_NAME} conectado ao AI Admin Dashboard\`);
     } catch (error) {
-      console.error('❌ Erro ao inicializar AI Admin Client:', error);
+      console.error('❌ Erro ao conectar ao dashboard:', error);
       throw error;
     }
   }
   return aiAdminClient;
 }
 
+// Função helper para verificar se está pronto para uso
+export function isReadyForUse(): boolean {
+  return !!(process.env.BOT_ID && process.env.BOT_SECRET && process.env.CONNECTION_STATUS === 'approved');
+}
+
 // Função para usar em handlers
 export async function withAiAdmin<T>(
   handler: (client: AiAdminClient) => Promise<T>
 ): Promise<T> {
+  if (!isReadyForUse()) {
+    throw new Error('Bot ainda não foi aprovado. Aguarde a aprovação do administrador.');
+  }
+  
   const client = await initializeAiAdmin();
   return handler(client);
 }
 
 // Eventos de monitoramento
-aiAdminClient.on('connected', () => {
-  console.log('🔗 Conectado ao AI Admin Dashboard');
-});
+if (isReadyForUse()) {
+  aiAdminClient.on('connected', () => {
+    console.log(\`🔗 \${process.env.BOT_NAME} conectado ao dashboard\`);
+  });
 
-aiAdminClient.on('disconnected', () => {
-  console.log('🔌 Desconectado do AI Admin Dashboard');
-});
+  aiAdminClient.on('disconnected', () => {
+    console.log(\`🔌 \${process.env.BOT_NAME} desconectado do dashboard\`);
+  });
 
-aiAdminClient.on('sessionCreated', (session) => {
-  console.log('👤 Nova sessão criada:', session.sessionId);
-});
+  aiAdminClient.on('sessionCreated', (session) => {
+    console.log('👤 Nova sessão criada:', session.sessionId);
+  });
 
-aiAdminClient.on('usageReported', (usage) => {
-  console.log('📊 Uso reportado:', usage.tokensUsed, 'tokens');
-});
+  aiAdminClient.on('usageReported', (usage) => {
+    console.log('📊 Uso reportado:', usage.tokensUsed, 'tokens');
+  });
 
-aiAdminClient.on('errorReported', (error) => {
-  console.log('🐛 Erro reportado:', error.error);
-});
+  aiAdminClient.on('errorReported', (error) => {
+    console.log('🐛 Erro reportado:', error.error);
+  });
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('🔴 Encerrando AI Admin Client...');
-  await aiAdminClient.shutdown();
-  process.exit(0);
-});
+  // Graceful shutdown
+  process.on('SIGTERM', async () => {
+    console.log(\`🔴 Encerrando \${process.env.BOT_NAME}...\`);
+    await aiAdminClient.shutdown();
+    process.exit(0);
+  });
 
-process.on('SIGINT', async () => {
-  console.log('🔴 Encerrando AI Admin Client...');
-  await aiAdminClient.shutdown();
-  process.exit(0);
-});
+  process.on('SIGINT', async () => {
+    console.log(\`🔴 Encerrando \${process.env.BOT_NAME}...\`);
+    await aiAdminClient.shutdown();
+    process.exit(0);
+  });
+}
 `;
 
   const clientPath = path.join(process.cwd(), CONFIG_DIR, 'client.ts');
@@ -159,474 +408,11 @@ process.on('SIGINT', async () => {
   console.log('✅ Cliente configurado: ai-admin-config/client.ts');
 }
 
-function createExpressIntegration() {
-  const expressContent = `import express from 'express';
-import { aiAdminClient, initializeAiAdmin, withAiAdmin } from './client';
 
-const app = express();
-const port = process.env.PORT || 3001;
 
-// Middleware
-app.use(express.json());
 
-// Middleware de CORS para dashboard
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', process.env.DASHBOARD_URL);
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  next();
-});
 
-// Endpoint de status para o dashboard
-app.get('/api/ai-admin/status', async (req, res) => {
-  try {
-    const status = await aiAdminClient.getConnectionStatus();
-    const stats = await aiAdminClient.getUsageStats();
-    const sessions = aiAdminClient.getActiveSessions();
-    
-    res.json({
-      connected: status.connected,
-      activeSessions: sessions.length,
-      tokensUsed: stats.local?.totalTokens || 0,
-      totalUsage: stats.local?.totalUsage || 0,
-      lastPing: status.lastPing
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Erro ao obter status' });
-  }
-});
 
-// Endpoint de chat - Exemplo de integração
-app.post('/api/chat', async (req, res) => {
-  try {
-    const { message, userId, tenantId } = req.body;
-
-    if (!message || !userId || !tenantId) {
-      return res.status(400).json({ 
-        error: 'message, userId e tenantId são obrigatórios' 
-      });
-    }
-
-    await withAiAdmin(async (client) => {
-      // 1. Criar sessão para o usuário
-      const session = await client.createUserSession(userId, tenantId, {
-        userAgent: req.headers['user-agent'],
-        ip: req.ip
-      });
-
-      try {
-        // 2. Processar mensagem (SUBSTITUA PELA SUA LÓGICA)
-        const response = await processMessage(message);
-
-        // 3. Reportar uso automaticamente
-        await client.reportUsage({
-          sessionId: session.sessionId,
-          userId,
-          tenantId,
-          action: 'chat_message',
-          tokensUsed: response.tokensUsed,
-          metadata: {
-            messageLength: message.length,
-            responseTime: response.responseTime
-          }
-        });
-
-        res.json({
-          response: response.content,
-          sessionId: session.sessionId,
-          tokensUsed: response.tokensUsed
-        });
-
-      } finally {
-        // 4. Encerrar sessão
-        await client.endUserSession(session.sessionId);
-      }
-    });
-
-  } catch (error) {
-    console.error('Erro no chat:', error);
-    
-    // Reportar erro automaticamente
-    try {
-      await aiAdminClient.reportError({
-        error: error instanceof Error ? error.message : String(error),
-        errorCode: 'CHAT_ERROR',
-        context: { endpoint: '/api/chat', body: req.body }
-      });
-    } catch (reportError) {
-      console.error('Erro ao reportar erro:', reportError);
-    }
-
-    res.status(500).json({ error: 'Erro interno' });
-  }
-});
-
-// Webhook para receber comandos do dashboard
-app.post('/api/ai-admin/webhook', async (req, res) => {
-  try {
-    const { type, data } = req.body;
-    
-    switch (type) {
-      case 'ping':
-        res.json({ status: 'ok', timestamp: Date.now() });
-        break;
-        
-      case 'status_check':
-        const status = await aiAdminClient.getConnectionStatus();
-        res.json(status);
-        break;
-        
-      default:
-        res.status(400).json({ error: 'Tipo de comando não suportado' });
-    }
-  } catch (error) {
-    console.error('Erro no webhook:', error);
-    res.status(500).json({ error: 'Erro interno' });
-  }
-});
-
-// Função de exemplo para processar mensagens
-async function processMessage(message: string) {
-  // SUBSTITUA ESTA FUNÇÃO PELA SUA LÓGICA DE IA/CHATBOT
-  const responseTime = Date.now();
-  
-  // Simular processamento
-  await new Promise(resolve => setTimeout(resolve, 500));
-  
-  return {
-    content: \`Resposta para: \${message}\`,
-    tokensUsed: Math.floor(message.length * 0.75), // Exemplo de cálculo
-    responseTime: Date.now() - responseTime
-  };
-}
-
-// Inicializar servidor
-async function startServer() {
-  try {
-    // Inicializar cliente AI Admin
-    await initializeAiAdmin();
-    
-    app.listen(port, () => {
-      console.log(\`🚀 Servidor rodando na porta \${port}\`);
-      console.log(\`📡 Dashboard URL: \${process.env.DASHBOARD_URL}\`);
-      console.log(\`🤖 Bot ID: \${process.env.BOT_ID}\`);
-    });
-  } catch (error) {
-    console.error('❌ Erro ao iniciar servidor:', error);
-    process.exit(1);
-  }
-}
-
-startServer();
-`;
-
-  const expressPath = path.join(process.cwd(), CONFIG_DIR, 'express-server.ts');
-  fs.writeFileSync(expressPath, expressContent);
-  console.log('✅ Integração Express criada: ai-admin-config/express-server.ts');
-}
-
-function createNextJsIntegration() {
-  // API Route para chat
-  const chatApiContent = `import { NextRequest, NextResponse } from 'next/server';
-import { aiAdminClient, withAiAdmin } from '../../client';
-
-export async function POST(request: NextRequest) {
-  try {
-    const { message, userId, tenantId } = await request.json();
-
-    if (!message || !userId || !tenantId) {
-      return NextResponse.json(
-        { error: 'message, userId e tenantId são obrigatórios' },
-        { status: 400 }
-      );
-    }
-
-    const result = await withAiAdmin(async (client) => {
-      // 1. Criar sessão para o usuário
-      const session = await client.createUserSession(userId, tenantId, {
-        userAgent: request.headers.get('user-agent'),
-        ip: request.headers.get('x-forwarded-for') || 'unknown'
-      });
-
-      try {
-        // 2. Processar mensagem (SUBSTITUA PELA SUA LÓGICA)
-        const response = await processMessage(message);
-
-        // 3. Reportar uso automaticamente
-        await client.reportUsage({
-          sessionId: session.sessionId,
-          userId,
-          tenantId,
-          action: 'chat_message',
-          tokensUsed: response.tokensUsed,
-          metadata: {
-            messageLength: message.length,
-            responseTime: response.responseTime
-          }
-        });
-
-        return {
-          response: response.content,
-          sessionId: session.sessionId,
-          tokensUsed: response.tokensUsed
-        };
-
-      } finally {
-        // 4. Encerrar sessão
-        await client.endUserSession(session.sessionId);
-      }
-    });
-
-    return NextResponse.json(result);
-
-  } catch (error) {
-    console.error('Erro no chat:', error);
-    
-    // Reportar erro automaticamente
-    try {
-      await aiAdminClient.reportError({
-        error: error instanceof Error ? error.message : String(error),
-        errorCode: 'CHAT_ERROR',
-        context: { endpoint: '/api/chat' }
-      });
-    } catch (reportError) {
-      console.error('Erro ao reportar erro:', reportError);
-    }
-
-    return NextResponse.json(
-      { error: 'Erro interno' },
-      { status: 500 }
-    );
-  }
-}
-
-// Função de exemplo para processar mensagens
-async function processMessage(message: string) {
-  // SUBSTITUA ESTA FUNÇÃO PELA SUA LÓGICA DE IA/CHATBOT
-  const responseTime = Date.now();
-  
-  // Simular processamento
-  await new Promise(resolve => setTimeout(resolve, 500));
-  
-  return {
-    content: \`Resposta para: \${message}\`,
-    tokensUsed: Math.floor(message.length * 0.75), // Exemplo de cálculo
-    responseTime: Date.now() - responseTime
-  };
-}
-`;
-
-  // API Route para status
-  const statusApiContent = `import { NextRequest, NextResponse } from 'next/server';
-import { aiAdminClient } from '../../client';
-
-export async function GET(request: NextRequest) {
-  try {
-    const status = await aiAdminClient.getConnectionStatus();
-    const stats = await aiAdminClient.getUsageStats();
-    const sessions = aiAdminClient.getActiveSessions();
-    
-    return NextResponse.json({
-      connected: status.connected,
-      activeSessions: sessions.length,
-      tokensUsed: stats.local?.totalTokens || 0,
-      totalUsage: stats.local?.totalUsage || 0,
-      lastPing: status.lastPing
-    });
-  } catch (error) {
-    return NextResponse.json(
-      { error: 'Erro ao obter status' },
-      { status: 500 }
-    );
-  }
-}
-`;
-
-  // API Route para webhook
-  const webhookApiContent = `import { NextRequest, NextResponse } from 'next/server';
-import { aiAdminClient } from '../../client';
-
-export async function POST(request: NextRequest) {
-  try {
-    const { type, data } = await request.json();
-    
-    switch (type) {
-      case 'ping':
-        return NextResponse.json({ status: 'ok', timestamp: Date.now() });
-        
-      case 'status_check':
-        const status = await aiAdminClient.getConnectionStatus();
-        return NextResponse.json(status);
-        
-      default:
-        return NextResponse.json(
-          { error: 'Tipo de comando não suportado' },
-          { status: 400 }
-        );
-    }
-  } catch (error) {
-    console.error('Erro no webhook:', error);
-    return NextResponse.json(
-      { error: 'Erro interno' },
-      { status: 500 }
-    );
-  }
-}
-`;
-
-  // Criar diretórios
-  const apiDir = path.join(process.cwd(), CONFIG_DIR, 'app', 'api');
-  const chatDir = path.join(apiDir, 'chat');
-  const statusDir = path.join(apiDir, 'ai-admin', 'status');
-  const webhookDir = path.join(apiDir, 'ai-admin', 'webhook');
-
-  fs.mkdirSync(chatDir, { recursive: true });
-  fs.mkdirSync(statusDir, { recursive: true });
-  fs.mkdirSync(webhookDir, { recursive: true });
-
-  // Criar arquivos
-  fs.writeFileSync(path.join(chatDir, 'route.ts'), chatApiContent);
-  fs.writeFileSync(path.join(statusDir, 'route.ts'), statusApiContent);
-  fs.writeFileSync(path.join(webhookDir, 'route.ts'), webhookApiContent);
-
-  console.log('✅ Integração Next.js criada:');
-  console.log('   - ai-admin-config/app/api/chat/route.ts');
-  console.log('   - ai-admin-config/app/api/ai-admin/status/route.ts');
-  console.log('   - ai-admin-config/app/api/ai-admin/webhook/route.ts');
-}
-
-function createExampleUsage() {
-  const exampleContent = `import { aiAdminClient, initializeAiAdmin, withAiAdmin } from './client';
-
-/**
- * Exemplo completo de uso do AI Admin Client
- * Demonstra todas as funcionalidades principais
- */
-
-async function exemploCompleto() {
-  console.log('🚀 Iniciando exemplo do AI Admin Client v2.0\\n');
-
-  try {
-    // 1. Inicializar cliente
-    console.log('📡 Conectando ao dashboard...');
-    await initializeAiAdmin();
-    console.log('✅ Conectado com sucesso!\\n');
-
-    // 2. Criar sessão para usuário
-    console.log('👤 Criando sessão para usuário...');
-    const session = await aiAdminClient.createUserSession('user-123', 'tenant-456', {
-      userAgent: 'ExemploApp/1.0',
-      ip: '192.168.1.100'
-    });
-    console.log(\`✅ Sessão criada: \${session.sessionId}\\n\`);
-
-    // 3. Simular uso do bot
-    console.log('🤖 Simulando interações do bot...');
-    
-    // Chat
-    await aiAdminClient.reportUsage({
-      sessionId: session.sessionId,
-      userId: 'user-123',
-      tenantId: 'tenant-456',
-      action: 'chat_message',
-      tokensUsed: 50,
-      metadata: { messageType: 'text', responseTime: 1200 }
-    });
-    console.log('📊 Uso reportado: Chat (50 tokens)');
-
-    // Geração de imagem
-    await aiAdminClient.reportUsage({
-      sessionId: session.sessionId,
-      userId: 'user-123',
-      tenantId: 'tenant-456',
-      action: 'image_generation',
-      tokensUsed: 100,
-      metadata: { imageSize: '1024x1024', style: 'realistic' }
-    });
-    console.log('📊 Uso reportado: Imagem (100 tokens)');
-
-    // 4. Simular um erro
-    console.log('\\n⚠️ Simulando um erro...');
-    await aiAdminClient.reportError({
-      sessionId: session.sessionId,
-      userId: 'user-123',
-      tenantId: 'tenant-456',
-      error: 'Rate limit exceeded',
-      errorCode: 'RATE_LIMIT_ERROR',
-      context: {
-        currentRequests: 100,
-        limit: 100,
-        resetTime: Date.now() + 3600000
-      }
-    });
-    console.log('🐛 Erro reportado: Rate limit');
-
-    // 5. Verificar status e estatísticas
-    console.log('\\n📈 Verificando status...');
-    const status = await aiAdminClient.getConnectionStatus();
-    console.log('Conexão:', status.connected ? '🟢 Ativa' : '🔴 Inativa');
-    
-    const stats = await aiAdminClient.getUsageStats();
-    console.log('Estatísticas:', {
-      totalTokens: stats.local?.totalTokens || 0,
-      totalInterações: stats.local?.totalUsage || 0
-    });
-
-    const sessionsAtivas = aiAdminClient.getActiveSessions();
-    console.log('Sessões ativas:', sessionsAtivas.length);
-
-    // 6. Encerrar sessão
-    console.log('\\n🔚 Encerrando sessão...');
-    await aiAdminClient.endUserSession(session.sessionId);
-    console.log('✅ Sessão encerrada');
-
-  } catch (error) {
-    console.error('❌ Erro durante execução:', error);
-  } finally {
-    // 7. Sempre encerrar o cliente
-    console.log('\\n🔌 Desconectando cliente...');
-    await aiAdminClient.shutdown();
-    console.log('✅ Cliente desconectado');
-  }
-}
-
-// Exemplo de uso com helper
-async function exemploComHelper() {
-  console.log('\\n🔧 Exemplo usando helper withAiAdmin...');
-  
-  await withAiAdmin(async (client) => {
-    const session = await client.createUserSession('user-456', 'tenant-789');
-    
-    await client.reportUsage({
-      sessionId: session.sessionId,
-      userId: 'user-456',
-      tenantId: 'tenant-789',
-      action: 'text_completion',
-      tokensUsed: 75
-    });
-    
-    await client.endUserSession(session.sessionId);
-    console.log('✅ Helper executado com sucesso');
-  });
-}
-
-// Executar exemplos
-if (require.main === module) {
-  exemploCompleto()
-    .then(() => exemploComHelper())
-    .then(() => {
-      console.log('\\n🎉 Exemplos concluídos! Package está pronto para uso.');
-    })
-    .catch(console.error);
-}
-
-export { exemploCompleto, exemploComHelper };
-`;
-
-  const examplePath = path.join(process.cwd(), CONFIG_DIR, 'exemplo.ts');
-  fs.writeFileSync(examplePath, exampleContent);
-  console.log('✅ Exemplo de uso criado: ai-admin-config/exemplo.ts');
-}
 
 function createPackageJson() {
   const projectType = isNextJsProject() ? 'nextjs' : isExpressProject() ? 'express' : 'standalone';
@@ -634,13 +420,14 @@ function createPackageJson() {
   const packageContent = {
     "name": "ai-admin-integration",
     "version": "1.0.0",
-    "description": `Integração com AI Admin Dashboard - ${projectType}`,
+    "description": `Integração automatizada com AI Admin Dashboard - ${projectType}`,
     "main": projectType === 'express' ? 'express-server.ts' : 'exemplo.ts',
     "scripts": {
       "start": projectType === 'express' ? "ts-node express-server.ts" : "ts-node exemplo.ts",
       "dev": projectType === 'express' ? "ts-node-dev --respawn express-server.ts" : "ts-node-dev --respawn exemplo.ts",
       "test": "ts-node exemplo.ts",
-      "build": "tsc"
+      "build": "tsc",
+      "check-status": "node -e \"console.log('Status:', require('./.env').CONNECTION_STATUS || 'Não configurado')\""
     },
     "dependencies": {
       "dengun_ai-admin-client": "^2.0.0",
@@ -661,47 +448,44 @@ function createPackageJson() {
   console.log(`✅ Package.json criado para ${projectType}: ai-admin-config/package.json`);
 }
 
-function createReadme() {
+function createReadme(options: InitOptions, connectionResult?: BotRequestResponse) {
   const projectType = isNextJsProject() ? 'Next.js' : isExpressProject() ? 'Express' : 'Standalone';
   
-  const readmeContent = `# AI Admin Client - Integração ${projectType}
+  const readmeContent = `# ${options.botName} - Integração AI Admin Dashboard
 
-## 🚀 Setup Completo Criado!
+## 🤖 Bot Configurado Automaticamente
 
-Este diretório contém toda a configuração necessária para integrar sua aplicação ${projectType} com o AI Admin Dashboard.
+- **Nome**: ${options.botName}
+- **Competências**: ${options.capabilities.join(', ')}
+- **URL**: ${options.botUrl}
+- **Status**: ${connectionResult?.status || 'Configurando...'}
+- **Tipo de Projeto**: ${projectType}
 
-### 📁 Arquivos Criados
+## 📊 Status da Conexão
 
-- \`.env\` - Configurações de ambiente
-- \`.env.example\` - Template de configurações
-- \`client.ts\` - Cliente configurado do AI Admin
-- \`exemplo.ts\` - Exemplo completo de uso
-${isExpressProject() ? '- `express-server.ts` - Servidor Express integrado' : ''}
-${isNextJsProject() ? '- `app/api/\` - API Routes do Next.js' : ''}
-- \`package.json\` - Dependências do projeto
-- \`README.md\` - Esta documentação
+${connectionResult?.status === 'approved' ? '✅ **APROVADO** - Seu bot está pronto para uso!' : ''}
+${connectionResult?.status === 'pending' ? '⏳ **PENDENTE** - Aguardando aprovação do administrador' : ''}
+${connectionResult?.status === 'rejected' ? '❌ **REJEITADO** - Entre em contato com o administrador' : ''}
 
-## ⚙️ Configuração (3 passos)
+${connectionResult?.requestId ? `**ID da Solicitação**: \`${connectionResult.requestId}\`` : ''}
 
-### 1. Configure as variáveis de ambiente
+## 🚀 Como Usar
+
+### 1. Instalar Dependências
 \`\`\`bash
-# Edite o arquivo .env com suas configurações
-nano .env
-
-# Principais configurações:
-# DASHBOARD_URL=http://localhost:3000
-# BOT_ID=seu-bot-id-aqui
-# BOT_SECRET=seu-bot-secret-aqui
-\`\`\`
-
-### 2. Instale as dependências
-\`\`\`bash
+cd ai-admin-config
 npm install
 \`\`\`
 
-### 3. Execute
+### 2. Verificar Status
 \`\`\`bash
-# Executar exemplo
+npm run check-status
+\`\`\`
+
+### 3. Executar
+${connectionResult?.status === 'approved' ? `
+\`\`\`bash
+# Testar integração
 npm run test
 
 # Executar aplicação
@@ -710,87 +494,53 @@ npm start
 # Modo desenvolvimento
 npm run dev
 \`\`\`
+` : `
+⚠️ **Aguarde a aprovação antes de executar**
 
-## 🔗 Solicitação de Conexão
+O administrador do dashboard precisa aprovar seu bot primeiro.
+Você receberá notificação por email quando aprovado.
+`}
 
-Para solicitar registro no dashboard, use:
-\`\`\`bash
-npx ai-admin-request \\
-  --name "Nome do seu Bot" \\
-  --email "seu@email.com" \\
-  --website "http://localhost:3001" \\
-  --description "Descrição do bot"
-\`\`\`
+## 🔐 Segurança
 
-## 📊 Funcionalidades Incluídas
+- ✅ Arquivo \`.env\` está protegido pelo \`.gitignore\`
+- ✅ Credenciais nunca são expostas no código
+- ✅ Comunicação segura com o dashboard
+- ✅ Apenas \`.env.example\` deve ser commitado
 
-### ✅ Conexão Automática
-- Autenticação com dashboard
-- Reconexão em falhas
-- Heartbeat automático
+## 📁 Arquivos Criados
 
-### ✅ Múltiplos Usuários
-- Sistema de sessões
-- Validação de permissões
-- Isolamento de dados
-
-### ✅ Telemetria Automática
-- Relatórios de uso de tokens
-- Estatísticas em tempo real
-- Envio em lotes otimizado
-
-### ✅ Relatório de Erros
-- Captura automática de erros
-- Categorização por gravidade
-- Context detalhado
-
-## 🛠️ Endpoints Disponíveis
-
-${isExpressProject() || isNextJsProject() ? `
-### API Endpoints
-- \`POST /api/chat\` - Endpoint de chat integrado
-- \`GET /api/ai-admin/status\` - Status da conexão
-- \`POST /api/ai-admin/webhook\` - Webhook do dashboard
-` : ''}
-
-## 🔧 Personalização
-
-### Processamento de Mensagens
-Edite a função \`processMessage()\` nos arquivos de API para implementar sua lógica de IA/chatbot.
-
-### Configurações Avançadas
-Modifique o arquivo \`client.ts\` para ajustar configurações específicas.
-
-### Eventos de Monitoramento
-O cliente emite eventos que você pode ouvir para monitoramento customizado.
-
-## 📚 Documentação Completa
-
-Consulte a documentação completa do package:
-- README principal do dengun_ai-admin-client
-- Exemplos em \`exemplo.ts\`
-- Código comentado nos arquivos de integração
+- \`client.ts\` - Cliente configurado do AI Admin
+- \`.env\` - Configurações (NUNCA commitar!)
+- \`.env.example\` - Template público
+- \`.gitignore\` - Proteção de arquivos sensíveis
+- \`package.json\` - Dependências do projeto
 
 ## 🆘 Solução de Problemas
 
+### Bot Pendente de Aprovação
+\`\`\`bash
+# Verificar status
+npm run check-status
+
+# Reenviar solicitação (se necessário)
+npx ai-admin-init --name "${options.botName}" --email "${options.email}" --capabilities "${options.capabilities.join(',')}" --url "${options.botUrl}"
+\`\`\`
+
 ### Erro de Conexão
-- Verifique se DASHBOARD_URL está correto
-- Confirme se o dashboard está rodando
-- Valide BOT_ID e BOT_SECRET
+1. Verifique se o dashboard está rodando
+2. Confirme a URL do dashboard no \`.env\`
+3. Aguarde a aprovação se ainda estiver pendente
 
-### Erro de Autenticação
-- Solicite registro com \`npx ai-admin-request\`
-- Aguarde aprovação do administrador
-- Verifique logs do dashboard
-
-### Problemas de Tokens
-- Confirme se o usuário tem tokens disponíveis
-- Verifique limites configurados no dashboard
-- Monitore uso através do endpoint de status
+### Reconfigurar Bot
+\`\`\`bash
+# Executar novamente com novos parâmetros
+npx ai-admin-init --name "Novo Nome" --email "novo@email.com" --capabilities "chat,text" --url "http://nova-url.com"
+\`\`\`
 
 ---
 
-**🎉 Sua aplicação está pronta para conectar ao AI Admin Dashboard!**
+**🔒 Lembre-se**: NUNCA commite o arquivo \`.env\` - ele contém credenciais sensíveis!
 `;
 
   const readmePath = path.join(process.cwd(), CONFIG_DIR, 'README.md');
@@ -798,42 +548,112 @@ Consulte a documentação completa do package:
   console.log('✅ Documentação criada: ai-admin-config/README.md');
 }
 
-function main() {
-  console.log('\n🚀 AI Admin Client - Setup Completo para Integração\n');
+function saveConnectionInfo(options: InitOptions, connectionResult: BotRequestResponse) {
+  const connectionData = {
+    botName: options.botName,
+    email: options.email,
+    capabilities: options.capabilities,
+    botUrl: options.botUrl,
+    dashboardUrl: options.dashboardUrl || 'http://localhost:3000',
+    requestId: connectionResult.requestId,
+    status: connectionResult.status,
+    botId: connectionResult.botId,
+    timestamp: new Date().toISOString(),
+    message: connectionResult.message
+  };
 
-  // Detectar tipo de projeto
-  const projectType = isNextJsProject() ? 'Next.js' : isExpressProject() ? 'Express' : 'Standalone';
-  console.log(`📦 Projeto detectado: ${projectType}`);
+  const connectionPath = path.join(process.cwd(), CONFIG_DIR, 'bot-request.json');
+  fs.writeFileSync(connectionPath, JSON.stringify(connectionData, null, 2));
+  console.log('💾 Informações da conexão salvas em: ai-admin-config/bot-request.json');
+}
 
-  // Criar diretório
-  const configDir = path.join(process.cwd(), CONFIG_DIR);
-  if (!fs.existsSync(configDir)) {
-    fs.mkdirSync(configDir, { recursive: true });
-    console.log('📁 Diretório criado: ai-admin-config/');
+async function main() {
+  console.log('\n🚀 AI Admin Init - Configuração Automatizada v2.0\n');
+
+  try {
+    // Parse dos argumentos
+    const options = parseArguments();
+    
+    // Validar opções
+    const errors = validateOptions(options);
+    if (errors.length > 0) {
+      console.error('❌ Parâmetros inválidos:');
+      errors.forEach(error => console.error(`   - ${error}`));
+      console.log('\nUse --help para ver as opções disponíveis');
+      process.exit(1);
+    }
+
+    console.log('📋 Configuração do Bot:');
+    console.log(`   Nome: ${options.botName}`);
+    console.log(`   Email: ${options.email}`);
+    console.log(`   Competências: ${options.capabilities.join(', ')}`);
+    console.log(`   URL: ${options.botUrl}`);
+    console.log(`   Dashboard: ${options.dashboardUrl || 'http://localhost:3000'}`);
+
+    // Criar diretório de configuração
+    const configDir = path.join(process.cwd(), CONFIG_DIR);
+    if (!fs.existsSync(configDir)) {
+      fs.mkdirSync(configDir, { recursive: true });
+      console.log('\n📁 Diretório de configuração criado: ai-admin-config/');
+    }
+
+    // Enviar solicitação de conexão
+    console.log('\n📤 Enviando solicitação de conexão...');
+    const connectionResult = await sendConnectionRequest(options);
+
+    console.log('\n✅ Solicitação enviada com sucesso!');
+    console.log(`   Status: ${connectionResult.status}`);
+    console.log(`   ID: ${connectionResult.requestId}`);
+    if (connectionResult.message) {
+      console.log(`   Mensagem: ${connectionResult.message}`);
+    }
+
+    // Criar arquivos de configuração
+    console.log('\n🔧 Criando configurações...');
+    createEnvFile(options, connectionResult);
+    createGitignore();
+    createClientSetup();
+    createPackageJson();
+    createReadme(options, connectionResult);
+    saveConnectionInfo(options, connectionResult);
+
+    // Resultado final
+    console.log('\n🎉 Configuração completa!');
+    
+    if (connectionResult.status === 'approved') {
+      console.log('\n✅ Bot aprovado automaticamente!');
+      console.log('🚀 Seu bot está pronto para uso');
+      console.log('\n📋 Próximos passos:');
+      console.log('1. cd ai-admin-config');
+      console.log('2. npm install');
+      console.log('3. npm start');
+    } else if (connectionResult.status === 'pending') {
+      console.log('\n⏳ Bot pendente de aprovação');
+      console.log('📧 O administrador foi notificado');
+      console.log('🔔 Você receberá email quando aprovado');
+      console.log('\n📋 Próximos passos:');
+      console.log('1. cd ai-admin-config');
+      console.log('2. npm install');
+      console.log('3. Aguarde aprovação');
+      console.log('4. npm start (após aprovação)');
+    } else {
+      console.log('\n❌ Solicitação rejeitada');
+      console.log('📧 Entre em contato com o administrador');
+    }
+
+    console.log('\n💡 Todos os arquivos sensíveis estão protegidos pelo .gitignore');
+    console.log('🔒 NUNCA commite o arquivo .env - ele contém credenciais!');
+
+  } catch (error) {
+    console.error('\n❌ Erro durante a configuração:');
+    console.error(`   ${error instanceof Error ? error.message : String(error)}`);
+    console.log('\n🔧 Possíveis soluções:');
+    console.log('   - Verifique se o dashboard está rodando');
+    console.log('   - Confirme a URL do dashboard');
+    console.log('   - Verifique sua conexão de internet');
+    console.log('   - Execute novamente com --help para ver opções');
+    process.exit(1);
   }
-
-  // Criar arquivos essenciais
-  createEnvFile();
-  createClientSetup();
-  createExampleUsage();
-  createPackageJson();
-  createReadme();
-
-  // Criar integração específica do projeto
-  if (isExpressProject()) {
-    createExpressIntegration();
-  } else if (isNextJsProject()) {
-    createNextJsIntegration();
-  }
-
-  console.log('\n✨ Setup completo criado!\n');
-  console.log('📋 Próximos passos:');
-  console.log('1. cd ai-admin-config');
-  console.log('2. Editar .env com suas configurações');
-  console.log('3. npm install');
-  console.log('4. npx ai-admin-request --name "Seu Bot" --email "seu@email.com"');
-  console.log('5. npm start\n');
-  console.log('💡 Tudo configurado! Sua aplicação está pronta para conectar! 🎉');
 }
 
 main();

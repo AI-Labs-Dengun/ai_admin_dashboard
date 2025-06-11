@@ -1,5 +1,10 @@
 import { AiAdminClient } from '../AiAdminClient';
 import { ClientConfig } from '../types/index';
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Carregar variáveis de ambiente de teste
+dotenv.config({ path: path.join(process.cwd(), 'ai-admin-config', '.env.test') });
 
 // Mock dos serviços
 jest.mock('../services/ConnectionManager');
@@ -8,9 +13,17 @@ jest.mock('../services/ErrorReporter');
 
 describe('AiAdminClient', () => {
   const mockConfig: ClientConfig = {
-    dashboardUrl: 'http://localhost:3000',
-    botId: 'test-bot',
-    botSecret: 'test-secret'
+    dashboardUrl: process.env.DASHBOARD_URL || 'http://localhost:3000',
+    botId: process.env.BOT_ID || 'test-bot',
+    botSecret: process.env.BOT_SECRET || 'test-secret',
+    options: {
+      autoReportUsage: process.env.AUTO_REPORT_USAGE === 'true',
+      autoReportErrors: process.env.AUTO_REPORT_ERRORS === 'true',
+      reportInterval: parseInt(process.env.REPORT_INTERVAL || '1000'),
+      timeout: parseInt(process.env.API_TIMEOUT || '5000'),
+      maxRetries: parseInt(process.env.MAX_RETRIES || '2'),
+      debug: process.env.DEBUG === 'true'
+    }
   };
 
   let client: AiAdminClient;
@@ -34,9 +47,12 @@ describe('AiAdminClient', () => {
       expect(client).toBeDefined();
     });
 
-    it('deve aplicar configurações padrão', () => {
-      const configWithDefaults = new AiAdminClient(mockConfig);
-      expect(configWithDefaults).toBeDefined();
+    it('deve aplicar configurações do ambiente', () => {
+      expect(mockConfig.dashboardUrl).toBe(process.env.DASHBOARD_URL);
+      expect(mockConfig.botId).toBe(process.env.BOT_ID);
+      expect(mockConfig.botSecret).toBe(process.env.BOT_SECRET);
+      expect(mockConfig.options?.autoReportUsage).toBe(process.env.AUTO_REPORT_USAGE === 'true');
+      expect(mockConfig.options?.reportInterval).toBe(parseInt(process.env.REPORT_INTERVAL || '1000'));
     });
 
     it('deve aceitar configurações personalizadas', () => {
@@ -176,6 +192,22 @@ describe('AiAdminClient', () => {
 
       const stats = await client.getUsageStats();
       expect(stats).toEqual(mockStats);
+    });
+  });
+
+  describe('Informações do Bot', () => {
+    it('deve ter informações do bot configuradas', () => {
+      expect(process.env.BOT_NAME).toBeDefined();
+      expect(process.env.BOT_DESCRIPTION).toBeDefined();
+      expect(process.env.BOT_VERSION).toBeDefined();
+      expect(process.env.BOT_AUTHOR).toBeDefined();
+      expect(process.env.BOT_WEBSITE).toBeDefined();
+    });
+
+    it('deve usar configurações de teste', () => {
+      expect(process.env.NODE_ENV).toBe('test');
+      expect(process.env.PORT).toBe('3002');
+      expect(process.env.DEBUG).toBe('true');
     });
   });
 }); 
