@@ -2,37 +2,29 @@
 
 ## 🎯 Visão Geral
 
-Este guia explica como instalar e configurar o `dengun_ai-admin-client` em sua aplicação externa para conectar ao AI Admin Dashboard. O processo foi projetado para ser **plug-and-play** com configuração mínima.
+Este guia explica como instalar e configurar o `dengun_ai-admin-client` em sua aplicação externa para conectar ao AI Admin Dashboard. O processo foi projetado para ser **completamente automatizado** com configuração em uma única linha de comando.
 
-## 🚀 Instalação Rápida (3 minutos)
+## 🚀 Instalação Rápida (1 minuto)
 
 ### 1. Instalar o Package
 ```bash
 npm install dengun_ai-admin-client
 ```
 
-### 2. Configuração Automática (Opcional)
+### 2. Configuração e Conexão Automática
 ```bash
-npx ai-admin-init
+npx ai-admin-init \
+  --name "Meu ChatBot" \
+  --email "admin@empresa.com" \
+  --capabilities "chat,text" \
+  --url "http://localhost:3001"
 ```
-Este comando cria uma pasta `ai-admin-config/` com:
-- Template de configuração (`.env.example`)
-- Exemplo de código (`exemplo.ts`)
-- Documentação (`README.md`)
-- Package.json configurado
 
-### 3. Uso Básico
-```typescript
-import { AiAdminClient } from 'dengun_ai-admin-client';
-
-const client = new AiAdminClient({
-  dashboardUrl: 'http://localhost:3000',
-  botId: 'seu-bot-id',
-  botSecret: 'seu-bot-secret'
-});
-
-await client.initialize();
-// Pronto para usar!
+### 3. Pronto para Usar!
+```bash
+cd ai-admin-config
+npm install
+npm start
 ```
 
 ## 📋 Pré-requisitos
@@ -43,537 +35,301 @@ await client.initialize();
 - **TypeScript**: Opcional, mas recomendado
 
 ### Dashboard AI Admin
-- Dashboard rodando e acessível
-- Bot cadastrado no dashboard
-- `botId` e `botSecret` do seu bot
+- Dashboard rodando e acessível na URL especificada
+- Permissões para solicitar novos bots
 
-## 🔧 Configuração Detalhada
+## 🔧 Comando de Inicialização
 
-### Opção 1: Configuração Manual
-
-#### 1.1. Instalar Dependências
+### Sintaxe Completa
 ```bash
-npm install dengun_ai-admin-client
+npx ai-admin-init \
+  --name "<nome-do-bot>" \
+  --email "<seu-email>" \
+  --capabilities "<competencias-separadas-por-virgula>" \
+  --url "<url-do-seu-bot>" \
+  [--dashboard-url "<url-do-dashboard>"]
 ```
 
-#### 1.2. Configurar Variáveis de Ambiente
-Crie um arquivo `.env` na raiz do seu projeto:
+### Parâmetros Obrigatórios
 
-```env
-# Configurações Obrigatórias
-DASHBOARD_URL=http://localhost:3000
-BOT_ID=seu-bot-id
-BOT_SECRET=seu-bot-secret
+| Parâmetro | Descrição | Exemplo |
+|-----------|-----------|---------|
+| `--name` | Nome do seu bot | `"Meu ChatBot"` |
+| `--email` | Email da sua conta | `"admin@empresa.com"` |
+| `--capabilities` | Competências do bot | `"chat,text,image"` |
+| `--url` | URL do seu bot/aplicação | `"http://localhost:3001"` |
 
-# Configurações Opcionais (com valores padrão)
-AUTO_REPORT_USAGE=true
-AUTO_REPORT_ERRORS=true
-REPORT_INTERVAL=30000
-DEBUG=false
+### Parâmetros Opcionais
+
+| Parâmetro | Descrição | Padrão |
+|-----------|-----------|--------|
+| `--dashboard-url` | URL do dashboard | `"http://localhost:3000"` |
+
+### Competências Disponíveis
+
+- **`chat`**: Conversação via chat
+- **`text`**: Processamento de texto
+- **`image`**: Geração/análise de imagens
+- **`voice`**: Processamento de voz
+- **`code`**: Geração de código
+- **`search`**: Busca e pesquisa
+
+## 🎯 Exemplos de Uso
+
+### Bot Básico de Chat
+```bash
+npx ai-admin-init \
+  --name "ChatBot Simples" \
+  --email "dev@empresa.com" \
+  --capabilities "chat" \
+  --url "http://localhost:3001"
 ```
 
-#### 1.3. Código Básico
+### Bot Avançado Multi-Modal
+```bash
+npx ai-admin-init \
+  --name "Bot Avançado" \
+  --email "admin@empresa.com" \
+  --capabilities "chat,text,image,voice" \
+  --url "https://meubot.empresa.com"
+```
+
+### Bot com Dashboard Customizado
+```bash
+npx ai-admin-init \
+  --name "Bot Empresarial" \
+  --email "admin@empresa.com" \
+  --capabilities "chat,text,code" \
+  --url "https://bot.empresa.com" \
+  --dashboard-url "https://dashboard.empresa.com"
+```
+
+## 🔄 O que Acontece Automaticamente
+
+### 1. Validação de Parâmetros
+- ✅ Verifica email válido
+- ✅ Valida URL do bot
+- ✅ Confirma competências válidas
+- ✅ Testa conectividade com dashboard
+
+### 2. Solicitação de Conexão
+- 📤 Envia solicitação para o dashboard
+- 🔐 Recebe credenciais (se aprovado automaticamente)
+- 📊 Configura sistema de telemetria
+- 🐛 Ativa relatórios de erro
+
+### 3. Criação de Arquivos
+- 📁 Cria diretório `ai-admin-config/`
+- ⚙️ Gera arquivo `.env` com configurações
+- 🔒 Cria `.gitignore` para proteção
+- 📝 Configura `client.ts` pronto para uso
+- 📚 Documenta tudo no `README.md`
+
+### 4. Proteção de Segurança
+- 🔐 Credenciais apenas no `.env` (nunca expostas)
+- 🚫 `.env` incluído no `.gitignore`
+- ✅ Template público `.env.example`
+- 🛡️ Validação automática de usuários
+
+## 📊 Status da Aprovação
+
+### Aprovação Automática ✅
+```
+✅ Bot aprovado automaticamente!
+🚀 Seu bot está pronto para uso
+```
+**Próximos passos**: `cd ai-admin-config && npm install && npm start`
+
+### Pendente de Aprovação ⏳
+```
+⏳ Bot pendente de aprovação
+📧 O administrador foi notificado
+```
+**Próximos passos**: Aguarde email de aprovação, depois execute `npm start`
+
+### Solicitação Rejeitada ❌
+```
+❌ Solicitação rejeitada
+📧 Entre em contato com o administrador
+```
+**Próximos passos**: Contate o administrador do dashboard
+
+## 🏗️ Integração Automática por Tipo de Projeto
+
+### Express.js (Detectado Automaticamente)
 ```typescript
-// src/ai-client.ts
-import { AiAdminClient } from 'dengun_ai-admin-client';
-import dotenv from 'dotenv';
+// Já configurado em client.ts
+import { withAiAdmin } from './client';
 
-dotenv.config();
-
-export const aiClient = new AiAdminClient({
-  dashboardUrl: process.env.DASHBOARD_URL!,
-  botId: process.env.BOT_ID!,
-  botSecret: process.env.BOT_SECRET!
+app.post('/api/chat', async (req, res) => {
+  await withAiAdmin(async (client) => {
+    const session = await client.createUserSession(userId, tenantId);
+    // Sua lógica aqui
+    await client.reportUsage({...});
+    await client.endUserSession(session.sessionId);
+  });
 });
 ```
 
-### Opção 2: Configuração Automática
+### Next.js (Detectado Automaticamente)
+```typescript
+// pages/api/chat.js ou app/api/chat/route.ts
+import { withAiAdmin } from '../../../ai-admin-config/client';
 
-#### 2.1. Usar o Script de Inicialização
-```bash
-npx ai-admin-init
+export async function POST(request) {
+  return await withAiAdmin(async (client) => {
+    const session = await client.createUserSession(userId, tenantId);
+    // Sua lógica aqui
+    return NextResponse.json({...});
+  });
+}
 ```
 
-#### 2.2. Personalizar a Configuração
+### Standalone/Outros
+```typescript
+// Qualquer aplicação
+import { initializeAiAdmin, aiAdminClient } from './ai-admin-config/client';
+
+async function main() {
+  await initializeAiAdmin();
+  // Sua lógica aqui
+}
+```
+
+## 🔒 Segurança Garantida
+
+### Proteção de Credenciais
+- ✅ **`.env`** nunca é commitado (`.gitignore` automático)
+- ✅ **Credenciais** apenas em variáveis de ambiente
+- ✅ **Templates públicos** sem dados sensíveis
+- ✅ **Validação** de usuários no dashboard
+
+### Comunicação Segura
+- 🔐 **HTTPS** quando disponível
+- 🔑 **Autenticação** via botId/botSecret
+- 📊 **Telemetria** criptografada
+- 🐛 **Relatórios** sem dados sensíveis
+
+## 🔍 Verificar Status da Configuração
+
+### Comando de Verificação
 ```bash
 cd ai-admin-config
-cp .env.example .env
-# Editar o .env com suas configurações
+npm run check-status
 ```
 
-#### 2.3. Instalar e Executar
+### Status Possíveis
+- **`approved`**: ✅ Pronto para uso
+- **`pending`**: ⏳ Aguardando aprovação
+- **`rejected`**: ❌ Rejeitado pelo administrador
+- **`error`**: 🔧 Erro na configuração
+
+## 🛠️ Reconfiguração
+
+### Alterar Configurações
+Para alterar qualquer configuração, execute novamente:
 ```bash
+npx ai-admin-init \
+  --name "Novo Nome" \
+  --email "novo@email.com" \
+  --capabilities "novas,competencias" \
+  --url "http://nova-url.com"
+```
+
+### Trocar Dashboard
+```bash
+npx ai-admin-init \
+  --name "Meu Bot" \
+  --email "admin@empresa.com" \
+  --capabilities "chat,text" \
+  --url "http://localhost:3001" \
+  --dashboard-url "https://novo-dashboard.com"
+```
+
+## 🆘 Solução de Problemas
+
+### Erro: Dashboard não acessível
+```
+❌ Dashboard não acessível em http://localhost:3000
+```
+**Solução**: 
+1. Verifique se o dashboard está rodando
+2. Confirme a URL com `--dashboard-url`
+3. Teste conectividade: `curl http://localhost:3000/api/health`
+
+### Erro: Email inválido
+```
+❌ Email inválido
+```
+**Solução**: Use um email válido como `admin@empresa.com`
+
+### Erro: Competências inválidas
+```
+❌ Competências inválidas: xyz, abc
+```
+**Solução**: Use apenas competências válidas: `chat,text,image,voice,code,search`
+
+### Bot pendente há muito tempo
+```
+⏳ Bot pendente de aprovação
+```
+**Solução**:
+1. Verifique o email do administrador
+2. Contate o administrador do dashboard
+3. Verifique logs do dashboard
+
+### Erro: URL do bot inválida
+```
+❌ URL do bot inválida
+```
+**Solução**: Use URL completa como `http://localhost:3001` ou `https://bot.empresa.com`
+
+## 📚 Próximos Passos Após Instalação
+
+### 1. Desenvolvimento
+```bash
+cd ai-admin-config
 npm install
+npm run dev  # Modo desenvolvimento
+```
+
+### 2. Personalização
+Edite os arquivos em `ai-admin-config/` para implementar sua lógica específica:
+- `client.ts` - Configurações do cliente
+- Adicione seus endpoints de API
+- Implemente processamento de mensagens
+
+### 3. Produção
+```bash
+npm run build
 npm start
 ```
 
-## 🏗️ Integração em Projetos Existentes
-
-### Express.js
-
-#### Instalação
-```bash
-npm install dengun_ai-admin-client express
-npm install -D @types/express
-```
-
-#### Configuração
-```typescript
-// app.ts
-import express from 'express';
-import { AiAdminClient } from 'dengun_ai-admin-client';
-
-const app = express();
-const port = 3001;
-
-// Configurar cliente AI Admin
-const aiClient = new AiAdminClient({
-  dashboardUrl: process.env.DASHBOARD_URL!,
-  botId: process.env.BOT_ID!,
-  botSecret: process.env.BOT_SECRET!
-});
-
-// Inicializar na startup
-async function startServer() {
-  try {
-    await aiClient.initialize();
-    console.log('✅ Conectado ao AI Admin Dashboard');
-    
-    app.listen(port, () => {
-      console.log(`🚀 Servidor rodando na porta ${port}`);
-    });
-  } catch (error) {
-    console.error('❌ Erro ao conectar:', error);
-    process.exit(1);
-  }
-}
-
-// Middleware para parsing JSON
-app.use(express.json());
-
-// Endpoint para chat
-app.post('/api/chat', async (req, res) => {
-  const { userId, tenantId, message } = req.body;
-  
-  try {
-    // Criar sessão para o usuário
-    const session = await aiClient.createUserSession(userId, tenantId);
-    
-    // Processar mensagem (sua lógica aqui)
-    const response = await processMessage(message);
-    
-    // Reportar uso automaticamente
-    await aiClient.reportUsage({
-      sessionId: session.sessionId,
-      userId,
-      tenantId,
-      action: 'chat',
-      tokensUsed: response.tokensUsed
-    });
-    
-    // Encerrar sessão
-    await aiClient.endUserSession(session.sessionId);
-    
-    res.json({
-      message: response.text,
-      sessionId: session.sessionId
-    });
-  } catch (error) {
-    console.error('Erro no chat:', error);
-    res.status(500).json({ error: 'Erro interno' });
-  }
-});
-
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  await aiClient.shutdown();
-  process.exit(0);
-});
-
-startServer();
-
-// Função de exemplo para processamento
-async function processMessage(message: string) {
-  // Aqui você coloca sua lógica de IA/chatbot
-  return {
-    text: `Echo: ${message}`,
-    tokensUsed: message.length * 0.1 // Exemplo
-  };
-}
-```
-
-### Next.js
-
-#### Instalação
-```bash
-npm install dengun_ai-admin-client
-```
-
-#### Configuração Global
-```typescript
-// lib/ai-client.ts
-import { AiAdminClient } from 'dengun_ai-admin-client';
-
-let aiClient: AiAdminClient | null = null;
-
-export function getAiClient(): AiAdminClient {
-  if (!aiClient) {
-    aiClient = new AiAdminClient({
-      dashboardUrl: process.env.DASHBOARD_URL!,
-      botId: process.env.BOT_ID!,
-      botSecret: process.env.BOT_SECRET!
-    });
-  }
-  return aiClient;
-}
-
-export async function initializeAiClient(): Promise<void> {
-  const client = getAiClient();
-  if (!client.isInitialized) {
-    await client.initialize();
-  }
-}
-```
-
-#### API Route
-```typescript
-// pages/api/chat.ts (ou app/api/chat/route.ts para App Router)
-import type { NextApiRequest, NextApiResponse } from 'next';
-import { getAiClient, initializeAiClient } from '../../lib/ai-client';
-
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  try {
-    const client = getAiClient();
-    await initializeAiClient();
-
-    const { userId, tenantId, message } = req.body;
-
-    // Criar sessão
-    const session = await client.createUserSession(userId, tenantId);
-
-    // Processar (sua lógica)
-    const response = await processMessage(message);
-
-    // Reportar uso
-    await client.reportUsage({
-      sessionId: session.sessionId,
-      userId,
-      tenantId,
-      action: 'chat',
-      tokensUsed: response.tokensUsed
-    });
-
-    await client.endUserSession(session.sessionId);
-
-    res.json(response);
-  } catch (error) {
-    console.error('Erro na API:', error);
-    res.status(500).json({ error: 'Erro interno' });
-  }
-}
-
-async function processMessage(message: string) {
-  // Sua lógica aqui
-  return {
-    text: `Resposta para: ${message}`,
-    tokensUsed: 100
-  };
-}
-```
-
-### Aplicação Standalone
-
-```typescript
-// main.ts
-import { AiAdminClient } from 'dengun_ai-admin-client';
-
-class BotApplication {
-  private aiClient: AiAdminClient;
-
-  constructor() {
-    this.aiClient = new AiAdminClient({
-      dashboardUrl: process.env.DASHBOARD_URL!,
-      botId: process.env.BOT_ID!,
-      botSecret: process.env.BOT_SECRET!,
-      options: {
-        debug: true
-      }
-    });
-  }
-
-  async start(): Promise<void> {
-    try {
-      await this.aiClient.initialize();
-      console.log('🤖 Bot iniciado e conectado ao dashboard');
-      
-      // Configurar handlers de eventos
-      this.setupEventHandlers();
-      
-      // Sua lógica de aplicação aqui
-      await this.runBot();
-    } catch (error) {
-      console.error('❌ Erro ao iniciar bot:', error);
-      process.exit(1);
-    }
-  }
-
-  private setupEventHandlers(): void {
-    this.aiClient.on('connected', () => {
-      console.log('🔗 Conectado ao dashboard');
-    });
-
-    this.aiClient.on('disconnected', () => {
-      console.log('🔌 Desconectado do dashboard');
-    });
-
-    this.aiClient.on('sessionCreated', (session) => {
-      console.log('👤 Nova sessão:', session.sessionId);
-    });
-
-    this.aiClient.on('usageReported', (usage) => {
-      console.log('📊 Uso reportado:', usage.tokensUsed, 'tokens');
-    });
-  }
-
-  private async runBot(): Promise<void> {
-    // Simular interações
-    const session = await this.aiClient.createUserSession('user123', 'tenant456');
-    
-    // Simular uso
-    await this.aiClient.reportUsage({
-      sessionId: session.sessionId,
-      userId: 'user123',
-      tenantId: 'tenant456',
-      action: 'chat',
-      tokensUsed: 150
-    });
-
-    await this.aiClient.endUserSession(session.sessionId);
-  }
-
-  async stop(): Promise<void> {
-    await this.aiClient.shutdown();
-    console.log('🛑 Bot parado');
-  }
-}
-
-// Executar
-const bot = new BotApplication();
-
-bot.start().catch(console.error);
-
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  await bot.stop();
-  process.exit(0);
-});
-```
-
-## ⚙️ Configurações Avançadas
-
-### Configuração Completa
-```typescript
-const client = new AiAdminClient({
-  // Obrigatório
-  dashboardUrl: 'http://localhost:3000',
-  botId: 'meu-bot',
-  botSecret: 'meu-secret',
-  
-  // Opcional
-  options: {
-    autoReportUsage: true,      // Reportar uso automaticamente
-    autoReportErrors: true,     // Reportar erros automaticamente
-    reportInterval: 30000,      // Intervalo de relatórios (30s)
-    maxRetries: 3,              // Tentativas de reconexão
-    timeout: 10000,             // Timeout de requisições (10s)
-    debug: false                // Logs de debug
-  }
-});
-```
-
-### Monitoramento Avançado
-```typescript
-// Eventos de monitoramento
-client.on('connected', () => console.log('Conectado'));
-client.on('disconnected', () => console.log('Desconectado'));
-client.on('sessionCreated', (session) => console.log('Nova sessão:', session));
-client.on('usageReported', (usage) => console.log('Uso reportado:', usage));
-client.on('errorReported', (error) => console.log('Erro reportado:', error));
-
-// Verificar status
-const status = await client.getConnectionStatus();
-console.log('Status:', status);
-
-// Obter estatísticas
-const stats = await client.getUsageStats();
-console.log('Estatísticas:', stats);
-
-// Listar sessões ativas
-const sessions = client.getActiveSessions();
-console.log('Sessões ativas:', sessions.length);
-```
-
-## 🔒 Segurança
-
-### Variáveis de Ambiente
-```bash
-# Nunca commitar os secrets no código
-BOT_SECRET=seu-secret-real-aqui
-```
-
-### Validação de Usuários
-```typescript
-// O cliente valida automaticamente no dashboard
-try {
-  const session = await client.createUserSession(userId, tenantId);
-  // Usuário válido com permissões
-} catch (error) {
-  // Usuário sem acesso ou tokens insuficientes
-  console.error('Acesso negado:', error.message);
-}
-```
-
-## 🔍 Troubleshooting
-
-### Problemas Comuns
-
-#### 1. Erro de Conexão
-```
-Error: connect ECONNREFUSED 127.0.0.1:3000
-```
-**Solução**: Verificar se o dashboard está rodando na URL correta.
-
-#### 2. Autenticação Falhada
-```
-Error: Usuário não autorizado: Invalid bot credentials
-```
-**Solução**: Verificar `botId` e `botSecret` no dashboard.
-
-#### 3. Usuário Sem Acesso
-```
-Error: Usuário não autorizado: User does not have access to this bot
-```
-**Solução**: Configurar permissões do usuário no dashboard.
-
-#### 4. Timeout
-```
-Error: timeout of 10000ms exceeded
-```
-**Solução**: Aumentar o timeout ou verificar conectividade.
-
-### Debug
-```typescript
-// Habilitar logs detalhados
-const client = new AiAdminClient({
-  // ...
-  options: { debug: true }
-});
-```
-
-### Verificar Saúde da Conexão
-```typescript
-const status = await client.getConnectionStatus();
-if (!status.connected) {
-  console.error('Não conectado:', status.error);
-}
-```
-
-## 📊 Testes
-
-### Teste de Instalação
-```typescript
-// test-installation.ts
-import { AiAdminClient } from 'dengun_ai-admin-client';
-
-async function testInstallation() {
-  const client = new AiAdminClient({
-    dashboardUrl: 'http://localhost:3000',
-    botId: 'test-bot',
-    botSecret: 'test-secret'
-  });
-
-  try {
-    await client.initialize();
-    console.log('✅ Instalação OK');
-    
-    const status = await client.getConnectionStatus();
-    console.log('✅ Conexão OK:', status.connected);
-    
-    await client.shutdown();
-    console.log('✅ Shutdown OK');
-  } catch (error) {
-    console.error('❌ Erro:', error);
-  }
-}
-
-testInstallation();
-```
-
-### Teste de Integração
-```typescript
-// test-integration.ts
-import { AiAdminClient } from 'dengun_ai-admin-client';
-
-async function testIntegration() {
-  const client = new AiAdminClient({
-    dashboardUrl: process.env.DASHBOARD_URL!,
-    botId: process.env.BOT_ID!,
-    botSecret: process.env.BOT_SECRET!
-  });
-
-  await client.initialize();
-
-  // Teste de sessão
-  const session = await client.createUserSession('test-user', 'test-tenant');
-  console.log('✅ Sessão criada:', session.sessionId);
-
-  // Teste de uso
-  await client.reportUsage({
-    sessionId: session.sessionId,
-    userId: 'test-user',
-    tenantId: 'test-tenant',
-    action: 'test',
-    tokensUsed: 1
-  });
-  console.log('✅ Uso reportado');
-
-  // Teste de erro
-  await client.reportError({
-    error: 'Teste de erro',
-    errorCode: 'TEST_ERROR'
-  });
-  console.log('✅ Erro reportado');
-
-  await client.endUserSession(session.sessionId);
-  await client.shutdown();
-  console.log('✅ Todos os testes passaram');
-}
-
-testIntegration().catch(console.error);
-```
-
-## 📚 Próximos Passos
-
-1. **Execute o exemplo**: `npx ai-admin-init && cd ai-admin-config && npm install && npm start`
-2. **Integre em sua aplicação**: Use os exemplos de Express.js ou Next.js
-3. **Configure monitoramento**: Adicione listeners de eventos
-4. **Teste em produção**: Valide com usuarios reais
-5. **Consulte a documentação**: README.md para referência completa
-
-## 🆘 Suporte
-
-- **Issues**: [GitHub Issues](https://github.com/dengun/ai-admin-dashboard/issues)
-- **Documentação**: README.md completo
-- **Exemplos**: Pasta `/examples`
-- **Changelog**: CHANGELOG.md
+### 4. Monitoramento
+Acesse o dashboard em `DASHBOARD_URL` para:
+- 📊 Ver estatísticas de uso
+- 👥 Gerenciar usuários
+- 🐛 Monitorar erros
+- ⚙️ Ajustar configurações
+
+## 💡 Dicas Importantes
+
+### ✅ Faça
+- ✅ Use nomes descritivos para seus bots
+- ✅ Mantenha o `.env` privado sempre
+- ✅ Teste a integração após configurar
+- ✅ Monitore o uso no dashboard
+- ✅ Configure competências adequadas
+
+### ❌ Não Faça
+- ❌ Commite arquivos `.env`
+- ❌ Exponha credenciais no código
+- ❌ Use URLs inválidas
+- ❌ Ignore erros de aprovação
+- ❌ Configure competências desnecessárias
 
 ---
 
-**💡 Dica**: O package foi projetado para ser plug-and-play. Se você seguiu os passos básicos e ainda tem problemas, verifique se o dashboard está acessível e se as credenciais estão corretas! 
+**🎉 Com este workflow, sua aplicação está pronta para conectar ao AI Admin Dashboard em menos de 1 minuto!**
+
+**🔒 Lembre-se**: Toda a comunicação é gerenciada pelo package - você só precisa focar na lógica do seu bot! 
