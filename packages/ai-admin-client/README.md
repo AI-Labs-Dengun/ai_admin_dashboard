@@ -1,204 +1,244 @@
-# dengun_ai-admin-client
+# AI Admin Client v2.0 - Plug and Play
 
-Cliente para integração com o AI Admin Dashboard, permitindo que bots externos se conectem de forma segura ao sistema.
+Cliente simples e genérico para integração com o AI Admin Dashboard. Focado em 4 objetivos principais:
 
-## Guia de Instalação Passo a Passo
+1. **🔗 Conexão**: Garantir conexão entre apps AI Admin Dashboard e aplicações externas
+2. **👥 Múltiplos usuários**: Permitir que usuários do dashboard usem o bot simultaneamente  
+3. **📊 Telemetria**: Enviar dados sobre consumo do bot automaticamente
+4. **🐛 Relatórios**: Reportar erros, bugs e falhas automaticamente
 
-### 1. Instalação do Pacote
+## 🚀 Instalação e Uso (3 comandos)
 
 ```bash
-# Instalar o pacote
+# 1. Instalar o pacote
 npm install dengun_ai-admin-client
+
+# 2. Inicializar configuração
+npx ai-admin-init
+
+# 3. Configurar e usar
+cd ai-admin-config && cp .env.example .env
+# Editar .env com suas configurações
+npm install && npm start
 ```
 
-### 2. Inicialização do Cliente
+## 📋 Uso Básico
 
-Após a instalação, execute o comando de inicialização para criar a estrutura necessária:
+```typescript
+import { AiAdminClient } from 'dengun_ai-admin-client';
 
-```bash
-# Executar o script de inicialização
-npx -p dengun_ai-admin-client dengun-ai-init
+// Configuração mínima - apenas 3 parâmetros
+const client = new AiAdminClient({
+  dashboardUrl: 'http://localhost:3000',
+  botId: 'seu-bot-id',
+  botSecret: 'seu-bot-secret'
+});
+
+async function exemplo() {
+  // 1. Conectar ao dashboard
+  await client.initialize();
+
+  // 2. Criar sessão para usuário
+  const session = await client.createUserSession('user123', 'tenant456');
+
+  // 3. Reportar uso (automático)
+  await client.reportUsage({
+    sessionId: session.sessionId,
+    userId: 'user123',
+    tenantId: 'tenant456',
+    action: 'chat_message',
+    tokensUsed: 150
+  });
+
+  // 4. Reportar erro se necessário (automático)
+  await client.reportError({
+    error: 'Algo deu errado',
+    errorCode: 'CUSTOM_ERROR'
+  });
+
+  // Encerrar
+  await client.endUserSession(session.sessionId);
+  await client.shutdown();
+}
 ```
 
-Este comando irá:
-- Criar a pasta `dengun_ai-admin`
-- Criar os arquivos de configuração necessários
-- Configurar a estrutura básica do projeto
-- Baixar a chave pública do dashboard para validação de tokens
+## ⚙️ Configuração Avançada
 
-### 3. Configuração do Bot
+```typescript
+const client = new AiAdminClient({
+  dashboardUrl: 'http://localhost:3000',
+  botId: 'meu-bot',
+  botSecret: 'meu-secret',
+  options: {
+    autoReportUsage: true,    // Relatório automático de uso
+    autoReportErrors: true,   // Relatório automático de erros
+    reportInterval: 30000,    // Intervalo de relatórios (30s)
+    timeout: 10000,           // Timeout de conexão (10s)
+    debug: false              // Logs de debug
+  }
+});
+```
 
-Edite o arquivo `.env` na pasta `dengun_ai-admin` com as configurações do seu bot:
+## 🎯 4 Objetivos Principais
+
+### 1. Conexão entre Apps
+- Autenticação automática com o dashboard
+- Reconexão automática em caso de falha
+- Ping periódico para manter conexão ativa
+- Gerenciamento de tokens transparente
+
+### 2. Múltiplos Usuários Simultâneos
+- Sistema de sessões por usuário
+- Validação automática de permissões
+- Suporte a vários tenants
+- Isolamento de dados por usuário
+
+### 3. Telemetria Automática
+- Relatório automático de uso de tokens
+- Estatísticas de sessões ativas
+- Métricas de performance
+- Dados enviados em lotes otimizados
+
+### 4. Relatório de Erros
+- Captura automática de erros não tratados
+- Relatórios detalhados com stack traces
+- Categorização de erros por gravidade
+- Contexto automático das sessões
+
+## 📊 API Reference
+
+### AiAdminClient
+
+#### Métodos Principais
+
+- `initialize()` - Conecta ao dashboard
+- `createUserSession(userId, tenantId)` - Cria sessão de usuário
+- `reportUsage(usage)` - Reporta uso do bot
+- `reportError(error)` - Reporta erro
+- `endUserSession(sessionId)` - Encerra sessão
+- `shutdown()` - Desconecta e limpa recursos
+
+#### Métodos de Monitoramento
+
+- `getConnectionStatus()` - Status da conexão
+- `getActiveSessions()` - Sessões ativas
+- `getUsageStats()` - Estatísticas de uso
+
+#### Eventos
+
+```typescript
+client.on('connected', () => console.log('Conectado'));
+client.on('disconnected', () => console.log('Desconectado'));
+client.on('sessionCreated', (session) => console.log('Sessão criada'));
+client.on('usageReported', (usage) => console.log('Uso reportado'));
+client.on('errorReported', (error) => console.log('Erro reportado'));
+```
+
+## 🔧 Variáveis de Ambiente
 
 ```env
-# Configurações do Bot
-BOT_NAME="Nome do seu bot"
-BOT_DESCRIPTION="Descrição detalhada do seu bot"
-BOT_CAPABILITIES="chat,image-generation,text-analysis"
-BOT_CONTACT_EMAIL="seu@email.com"
-BOT_WEBSITE="https://seu-bot.com"
-MAX_TOKENS_PER_REQUEST=1000
+# Obrigatórias
+DASHBOARD_URL=http://localhost:3000
+BOT_ID=seu-bot-id
+BOT_SECRET=seu-bot-secret
 
-# Configurações do Dashboard
-DASHBOARD_URL="https://seu-dashboard.com"
+# Opcionais (com valores padrão)
+AUTO_REPORT_USAGE=true
+AUTO_REPORT_ERRORS=true  
+REPORT_INTERVAL=30000
+DEBUG=false
 ```
 
-### 4. Instalação de Dependências
+## 🏗️ Integração em Projeto Existente
 
-Instale as dependências necessárias para executar os scripts:
-
-```bash
-npm install -D ts-node typescript @types/node dotenv axios jose
-```
-
-### 5. Registro do Bot
-
-Execute o comando de registro para enviar a solicitação ao dashboard:
-
-```bash
-# Registrar o bot no dashboard
-npx -p dengun_ai-admin-client dengun-ai-register
-```
-
-Este comando irá:
-- Verificar as configurações no arquivo .env
-- Enviar a solicitação de registro ao dashboard
-- Salvar o token recebido no arquivo .env
-- Mostrar instruções para os próximos passos
-
-### 6. Estrutura Criada
-
-Após a inicialização, você terá a seguinte estrutura:
-
-```
-dengun_ai-admin/
-├── .env                 # Configurações do bot e tenants
-├── config/
-│   └── bot.ts          # Configuração da conexão
-├── types/
-│   └── dengun_ai-admin-client.d.ts  # Declarações de tipos
-├── tests/
-│   └── connection.test.ts  # Teste de conexão
-└── examples/
-    └── bot-usage.ts    # Exemplo de uso
-```
-
-### 7. Validação de Tokens
-
-O cliente inclui funcionalidades para validar tokens JWT:
-
-1. **Validação Local**:
-   - Usa a chave pública do dashboard
-   - Verifica assinatura e expiração
-   - Valida permissões no payload
-
-2. **Validação Remota** (opcional):
-   - Endpoint `/api/bots/validate-token`
-   - Verifica revogação de tokens
-   - Atualiza permissões em tempo real
-
-Exemplo de validação:
+### Express.js
 ```typescript
-import { validateToken } from 'dengun_ai-admin-client';
+import express from 'express';
+import { AiAdminClient } from 'dengun_ai-admin-client';
 
-// Validação local
-const isValid = await validateToken(token);
+const app = express();
+const aiClient = new AiAdminClient({ /* config */ });
 
-// Validação remota (opcional)
-const validation = await validateToken(token, { remote: true });
-if (validation.valid) {
-  const { userId, tenantId, botId } = validation.payload;
-  // Usar os dados do token
+app.post('/chat', async (req, res) => {
+  const { userId, tenantId, message } = req.body;
+  
+  // Criar sessão
+  const session = await aiClient.createUserSession(userId, tenantId);
+  
+  // Processar chat...
+  const response = processChat(message);
+  
+  // Reportar uso
+  await aiClient.reportUsage({
+    sessionId: session.sessionId,
+    userId,
+    tenantId,
+    action: 'chat',
+    tokensUsed: response.tokensUsed
+  });
+  
+  res.json(response);
+});
+```
+
+### Next.js
+```typescript
+// pages/api/chat.ts
+import { AiAdminClient } from 'dengun_ai-admin-client';
+
+const client = new AiAdminClient({ /* config */ });
+
+export default async function handler(req, res) {
+  const session = await client.createUserSession(
+    req.body.userId, 
+    req.body.tenantId
+  );
+  
+  // Processar...
+  await client.reportUsage({ /* dados */ });
+  
+  res.json({ success: true });
 }
 ```
 
-### 8. Teste de Conexão
+## 🔍 Monitoramento e Debug
 
-Para verificar se a configuração está correta e testar a conexão com o dashboard:
-
-```bash
-# 1. Navegue até a pasta do projeto
-cd dengun_ai-admin
-
-# 2. Execute o teste de conexão
-npx ts-node tests/connection.test.ts
+### Logs de Debug
+```typescript
+const client = new AiAdminClient({
+  // ...
+  options: { debug: true }
+});
 ```
 
-O teste irá:
-- Verificar as configurações básicas
-- Tentar sincronizar os tenants
-- Mostrar o status de cada tenant encontrado
-- Exibir mensagens de erro detalhadas se algo der errado
-
-### 9. Uso do Cliente
-
-1. Importe o `botConnection` em seu código:
-
+### Métricas Customizadas
 ```typescript
-import { botConnection, getTenantConnection } from './dengun_ai-admin/config/bot';
-```
-
-2. Use o `botConnection` para interagir com todos os tenants:
-
-```typescript
-async function main() {
-  try {
-    // Exemplo de uso com múltiplos tenants
-    for (const [tenantId, connection] of Object.entries(botConnection)) {
-      console.log(`\\nVerificando conexão para o tenant ${tenantId}...`);
-
-      // Verificar status da solicitação
-      const requestStatus = await connection.checkRequestStatus();
-      console.log('Status da solicitação:', requestStatus);
-
-      // Se aprovado, você pode usar os outros métodos
-      if (requestStatus.status === 'approved') {
-        // Verificar status da conexão
-        const status = await connection.ping();
-        console.log('Status da conexão:', status);
-
-        // Obter acesso aos bots
-        const botAccess = await connection.getBotAccess();
-        console.log('Bots disponíveis:', botAccess);
-
-        // Obter uso de tokens
-        const tokenUsage = await connection.getTokenUsage();
-        console.log('Uso de tokens:', tokenUsage);
-      }
-    }
-  } catch (error) {
-    console.error('Erro:', error);
+// Reportar evento customizado
+await client.reportError({
+  error: 'Rate limit exceeded',
+  errorCode: 'RATE_LIMIT',
+  context: { 
+    limit: 100,
+    current: 150,
+    resetTime: Date.now() + 3600000
   }
-}
+});
 ```
 
-### 10. Solução de Problemas
+## 🤝 Contribuição
 
-#### Erros Comuns
+1. Fork o projeto
+2. Crie uma branch para sua feature
+3. Commit suas mudanças
+4. Push para a branch
+5. Abra um Pull Request
 
-1. **Erro de conexão com o dashboard**
-   - Verifique se o `DASHBOARD_URL` está correto
-   - Confirme se o dashboard está online
-   - Verifique se o `BOT_TOKEN` está correto
+## 📄 Licença
 
-2. **Erro de configuração do bot**
-   - Verifique se todas as variáveis de ambiente estão configuradas
-   - Confirme se o arquivo `.env` está na pasta correta
-   - Verifique se o bot foi aprovado pelo administrador do dashboard
+MIT - Consulte o arquivo LICENSE para detalhes.
 
-3. **Erro de validação de token**
-   - Verifique se a chave pública está atualizada
-   - Confirme se o token não expirou
-   - Verifique se o token não foi revogado
+## 📞 Suporte
 
-4. **Erro de importação**
-   - Verifique se o caminho de importação está correto
-   - Confirme se o TypeScript está configurado corretamente
-   - Verifique se todos os arquivos foram criados na pasta `dengun_ai-admin`
-
-### 11. Contribuição
-- Para contribuir, faça um fork, crie uma branch e envie um pull request.
-- Siga o versionamento semântico (semver) para novas versões.
-
-### 12. Licença
-ISC
+- **Issues**: [GitHub Issues](https://github.com/dengun/ai-admin-dashboard/issues)
+- **Documentação**: [GitHub Wiki](https://github.com/dengun/ai-admin-dashboard/wiki)
+- **Email**: support@dengun.com
