@@ -1,13 +1,18 @@
-export * from './types';
-export * from './services/BotConnection';
+export { AiAdminClient } from './AiAdminClient';
+export type { 
+  ClientConfig, 
+  UserSession, 
+  BotUsage, 
+  ErrorReport, 
+  ConnectionStatus, 
+  DashboardResponse, 
+  TelemetryEvent 
+} from './types/index';
 
-import { BotConnection } from './services/BotConnection';
-import { BotConfig } from './types';
+// Função helper para criar cliente
+import type { ClientConfig } from './types/index';
+import { AiAdminClient } from './AiAdminClient';
 
-export function createBotConnection(config: BotConfig): BotConnection {
-  const botConfig = {
-    ...config,
-    apiUrl: config.baseUrl
-  };
-  return new BotConnection(botConfig);
-} 
+export const createAiAdminClient = (config: ClientConfig) => {
+  return new AiAdminClient(config);
+}; 
