@@ -388,7 +388,26 @@ export async function recordTokenUsageServer(
 
       const supabase = createClientComponentClient();
 
-      // Buscar registro existente com lock
+      // Verificar se o usuário tem permissão
+      const { data: userPermission, error: permissionError } = await supabase
+        .from('tenant_users')
+        .select('allow_bot_access')
+        .match({
+          user_id: userId,
+          tenant_id: tenantId
+        })
+        .single();
+
+      if (permissionError) {
+        console.error('❌ Erro ao verificar permissão:', permissionError);
+        throw new Error('Erro ao verificar permissão do usuário');
+      }
+
+      if (!userPermission?.allow_bot_access) {
+        throw new Error('Usuário não tem permissão para usar tokens');
+      }
+
+      // Buscar registro existente
       const { data: existingRecord, error: fetchError } = await supabase
         .from('token_usage')
         .select('*')
@@ -400,55 +419,69 @@ export async function recordTokenUsageServer(
         .single();
 
       if (fetchError && fetchError.code !== 'PGRST116') {
+        console.error('❌ Erro ao buscar registro existente:', fetchError);
         throw fetchError;
       }
 
       const currentTotalTokens = existingRecord?.total_tokens || 0;
       const newTotalTokens = currentTotalTokens + tokensConsumed;
+      const now = new Date().toISOString();
 
       console.log('📊 Calculando tokens:', {
         currentTotalTokens,
         newTokens: tokensConsumed,
-        newTotalTokens
+        newTotalTokens,
+        now
       });
 
       // Se não existe registro, criar novo
       if (!existingRecord) {
-        const { data: newRecord, error: insertError } = await supabase
+        const newRecord = {
+          user_id: userId,
+          tenant_id: tenantId,
+          bot_id: botId,
+          tokens_used: tokensConsumed,
+          total_tokens: newTotalTokens,
+          action_type: actionType,
+          request_timestamp: now,
+          response_timestamp: now,
+          last_used: now,
+          created_at: now,
+          updated_at: now
+        };
+
+        console.log('📝 Criando novo registro:', newRecord);
+
+        const { data: insertedRecord, error: insertError } = await supabase
           .from('token_usage')
-          .insert({
-            user_id: userId,
-            tenant_id: tenantId,
-            bot_id: botId,
-            tokens_used: tokensConsumed,
-            total_tokens: newTotalTokens,
-            action_type: actionType,
-            request_timestamp: new Date().toISOString(),
-            response_timestamp: new Date().toISOString(),
-            last_used: new Date().toISOString()
-          })
+          .insert(newRecord)
           .select()
           .single();
 
         if (insertError) {
+          console.error('❌ Erro ao inserir novo registro:', insertError);
           throw insertError;
         }
 
-        console.log('✅ Novo registro de tokens criado:', newRecord);
-        return newRecord;
+        console.log('✅ Novo registro de tokens criado:', insertedRecord);
+        return insertedRecord;
       }
 
-      // Se existe, atualizar com verificação de concorrência
-      const { data: updatedRecord, error: updateError } = await supabase
+      // Se existe, atualizar
+      const updatedRecord = {
+        tokens_used: tokensConsumed,
+        total_tokens: newTotalTokens,
+        action_type: actionType,
+        response_timestamp: now,
+        last_used: now,
+        updated_at: now
+      };
+
+      console.log('📝 Atualizando registro existente:', updatedRecord);
+
+      const { data: updatedData, error: updateError } = await supabase
         .from('token_usage')
-        .update({
-          tokens_used: tokensConsumed,
-          total_tokens: newTotalTokens,
-          action_type: actionType,
-          response_timestamp: new Date().toISOString(),
-          last_used: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
+        .update(updatedRecord)
         .match({
           user_id: userId,
           tenant_id: tenantId,
@@ -460,23 +493,22 @@ export async function recordTokenUsageServer(
 
       if (updateError) {
         if (updateError.code === 'PGRST116') {
-          // Concorrência detectada, tentar novamente
           console.log('⚠️ Concorrência detectada, tentando novamente...');
           retryCount++;
           continue;
         }
+        console.error('❌ Erro ao atualizar registro:', updateError);
         throw updateError;
       }
 
-      if (!updatedRecord) {
-        // Se não houve atualização, provavelmente houve concorrência
+      if (!updatedData) {
         console.log('⚠️ Nenhum registro atualizado, tentando novamente...');
         retryCount++;
         continue;
       }
 
-      console.log('✅ Registro de tokens atualizado:', updatedRecord);
-      return updatedRecord;
+      console.log('✅ Registro de tokens atualizado:', updatedData);
+      return updatedData;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error('Erro desconhecido');
       console.error(`❌ Erro na tentativa ${retryCount + 1}:`, lastError);
