@@ -1,12 +1,11 @@
 {
   "name": "dengun_ai-admin-client",
-  "version": "2.0.0",
-  "description": "Cliente simples para integração com o AI Admin Dashboard - Plug and Play",
+  "version": "2.1.0",
+  "description": "Cliente automatizado para integração com o AI Admin Dashboard - Configuração em uma linha",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "ai-admin-init": "./dist/scripts/init.js",
-    "ai-admin-request": "./dist/scripts/request.js"
+    "ai-admin-init": "./dist/scripts/init.js"
   },
   "scripts": {
     "build": "tsc",
@@ -36,7 +35,9 @@
     "dashboard",
     "bot",
     "integration",
-    "plug-and-play",
+    "automated-setup",
+    "one-command",
+    "secure",
     "telemetry",
     "error-reporting"
   ],
