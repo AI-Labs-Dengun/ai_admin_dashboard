@@ -1,40 +1,84 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+.yarn/install-state.gz
 
-# dependencies
-/node_modules
+# Testing
+/coverage
+.nyc_output
 
-# next.js
+# Next.js
 /.next/
 /out/
+.next/
+next-env.d.ts
 
-# production
+# Production
 /build
+/dist
 
-# debug
+# Environment Variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+
+# Debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files
-.env*
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
 
-# vercel
-.vercel
+# OS
+.DS_Store
+*.pem
+Thumbs.db
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-# Supabase
-schema_supabase.md
-
-sql/
-
-#keys
+# Keys and certificates
+*.key
+*.pem
+*.cert
+*.crt
 private.key
 public.key
 
-#Folders
-md
-migrations/
+# Logs
+logs
+*.log
+
+# Cache
+.cache/
+.parcel-cache/
+.npm
+.eslintcache
+.stylelintcache
+
+# TypeScript
+*.tsbuildinfo
+
+# Temporary files
+*.swp
+*.swo
+*~
+
+# Project specific
+md/
+app/auth/layout.tsx
+app/proxy/layout.tsx
