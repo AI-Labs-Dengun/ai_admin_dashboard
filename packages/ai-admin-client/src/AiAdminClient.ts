@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import { ConnectionManager } from './services/ConnectionManager';
 import { TelemetryReporter } from './services/TelemetryReporter';
 import { ErrorReporter } from './services/ErrorReporter';
+import { BotDataCollector } from './services/BotDataCollector';
 import { ClientConfig, UserSession, BotUsage, ErrorReport, ConnectionStatus, DashboardResponse } from './types/index';
 
 /**
@@ -12,12 +13,14 @@ import { ClientConfig, UserSession, BotUsage, ErrorReport, ConnectionStatus, Das
  * 2. Suporte a múltiplos usuários simultâneos
  * 3. Relatório automático de uso
  * 4. Relatório automático de erros
+ * 5. Coleta automática de dados do bot externo
  */
 export class AiAdminClient extends EventEmitter {
   private config: ClientConfig;
   private connectionManager: ConnectionManager;
   private telemetryReporter: TelemetryReporter;
   private errorReporter: ErrorReporter;
+  private botDataCollector: BotDataCollector | null = null;
   private activeSessions: Map<string, UserSession> = new Map();
   private isInitialized = false;
 
@@ -44,6 +47,19 @@ export class AiAdminClient extends EventEmitter {
   }
 
   /**
+   * Configurar coleta de dados do bot externo
+   */
+  setupBotDataCollection(botConfig: { interactionsUrl: string; tokensUrl: string; pollInterval?: number }): void {
+    this.botDataCollector = new BotDataCollector(this.config, botConfig);
+    this.botDataCollector.setTelemetryReporter(this.telemetryReporter);
+    
+    // Repassar eventos do coletor
+    this.botDataCollector.on('error', (error) => {
+      this.emit('botDataError', error);
+    });
+  }
+
+  /**
    * Inicializa o cliente e estabelece conexão com o dashboard
    */
   async initialize(): Promise<void> {
@@ -64,6 +80,11 @@ export class AiAdminClient extends EventEmitter {
       
       if (this.config.options?.autoReportErrors) {
         await this.errorReporter.start();
+      }
+
+      // Iniciar coleta de dados do bot se configurado
+      if (this.botDataCollector) {
+        await this.botDataCollector.start();
       }
 
       this.isInitialized = true;
@@ -196,6 +217,9 @@ export class AiAdminClient extends EventEmitter {
       // Parar serviços
       await this.telemetryReporter.stop();
       await this.errorReporter.stop();
+      if (this.botDataCollector) {
+        await this.botDataCollector.stop();
+      }
       await this.connectionManager.disconnect();
 
       this.isInitialized = false;

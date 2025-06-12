@@ -10,6 +10,10 @@ export interface ClientConfig {
     maxRetries?: number;
     timeout?: number;
     debug?: boolean;
+    botDataCollection?: {
+      enabled: boolean;
+      pollInterval?: number;
+    };
   };
 }
 
@@ -29,6 +33,7 @@ export interface BotUsage {
   tenantId: string;
   action: string;
   tokensUsed: number;
+  interactions?: number;
   timestamp: number;
   metadata?: Record<string, any>;
 }
@@ -63,7 +68,14 @@ export interface ConnectionStatus {
 
 // Evento de telemetria
 export interface TelemetryEvent {
-  type: 'usage' | 'error' | 'connection' | 'custom';
+  type: 'usage' | 'error' | 'connection' | 'custom' | 'bot_data';
   data: BotUsage | ErrorReport | ConnectionStatus | Record<string, any>;
   timestamp: number;
+}
+
+// Configuração de coleta de dados do bot
+export interface BotDataConfig {
+  interactionsUrl: string;
+  tokensUrl: string;
+  pollInterval?: number;
 } 

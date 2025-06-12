@@ -2,6 +2,18 @@ import { EventEmitter } from 'events';
 import { ConnectionManager } from './ConnectionManager';
 import { ClientConfig, BotUsage } from '../types/index';
 
+interface UsageStats {
+  totalTokens: number;
+  totalInteractions: number;
+}
+
+interface TelemetryStats {
+  byUser: Record<string, UsageStats>;
+  byTenant: Record<string, UsageStats>;
+  byBot: Record<string, UsageStats>;
+  total: UsageStats;
+}
+
 /**
  * Objetivo 3: Reportar dados sobre o consumo do bot pelo usuário
  */
@@ -11,11 +23,11 @@ export class TelemetryReporter extends EventEmitter {
   private usageQueue: BotUsage[] = [];
   private reportInterval: NodeJS.Timeout | null = null;
   private isActive = false;
-  private stats = {
-    totalUsage: 0,
-    totalTokens: 0,
-    sessionCount: 0,
-    lastReport: 0
+  private stats: TelemetryStats = {
+    byUser: {},
+    byTenant: {},
+    byBot: {},
+    total: { totalTokens: 0, totalInteractions: 0 }
   };
 
   constructor(config: ClientConfig) {
@@ -62,49 +74,46 @@ export class TelemetryReporter extends EventEmitter {
    * Reportar uso do bot
    */
   async reportUsage(usage: BotUsage): Promise<void> {
-    if (!this.isActive) return;
-
-    // Adicionar à fila
-    this.usageQueue.push(usage);
-    
-    // Atualizar estatísticas locais
-    this.updateStats(usage);
-    
-    // Se a fila estiver cheia, enviar imediatamente
-    if (this.usageQueue.length >= 10) {
-      await this.flushQueue();
+    if (!this.connectionManager) {
+      throw new Error('ConnectionManager não configurado');
     }
 
-    this.emit('usageAdded', usage);
+    try {
+      // Adicionar à fila local
+      this.usageQueue.push(usage);
+      
+      // Atualizar estatísticas locais
+      this.updateStats(usage);
+
+      // Enviar para o dashboard
+      await this.connectionManager.sendData('/api/telemetry/usage', {
+        ...usage,
+        interactions: usage.interactions || 0 // Garantir que interactions seja enviado
+      });
+
+      this.emit('usageReported', usage);
+    } catch (error) {
+      this.emit('error', error);
+      throw error;
+    }
   }
 
   /**
    * Obter estatísticas de uso
    */
   async getStats(timeRange?: { start: number; end: number }): Promise<any> {
-    const localStats = { ...this.stats };
+    try {
+      // Obter estatísticas do servidor
+      const serverStats = await this.connectionManager?.sendData('/api/telemetry/stats', {
+        timeRange
+      });
 
-    // Se conectado, buscar stats do servidor também
-    if (this.connectionManager?.isConnectionActive()) {
-      try {
-        const serverStats = await this.connectionManager.sendData('/api/bots/usage-stats', {
-          botId: this.config.botId,
-          timeRange
-        });
-
-        if (serverStats.success) {
-          return {
-            local: localStats,
-            server: serverStats.data,
-            combined: this.combineStats(localStats, serverStats.data)
-          };
-        }
-      } catch (error) {
-        this.emit('error', error);
-      }
+      // Combinar com estatísticas locais
+      return this.combineStats(this.stats, serverStats?.data || {});
+    } catch (error) {
+      this.emit('error', error);
+      throw error;
     }
-
-    return { local: localStats };
   }
 
   /**
@@ -171,21 +180,58 @@ export class TelemetryReporter extends EventEmitter {
   }
 
   private updateStats(usage: BotUsage): void {
-    this.stats.totalUsage++;
-    this.stats.totalTokens += usage.tokensUsed;
+    const { userId, tenantId, tokensUsed, interactions = 0 } = usage;
+    const botId = usage.metadata?.botId as string;
     
-    // Contar sessões únicas
-    const uniqueSessions = new Set();
-    this.usageQueue.forEach(u => uniqueSessions.add(u.sessionId));
-    this.stats.sessionCount = uniqueSessions.size;
+    if (!botId) {
+      this.emit('error', new Error('botId não encontrado nos metadados'));
+      return;
+    }
+    
+    // Atualizar estatísticas por usuário
+    if (!this.stats.byUser[userId]) {
+      this.stats.byUser[userId] = { totalTokens: 0, totalInteractions: 0 };
+    }
+    this.stats.byUser[userId].totalTokens += tokensUsed;
+    this.stats.byUser[userId].totalInteractions += interactions;
+
+    // Atualizar estatísticas por tenant
+    if (!this.stats.byTenant[tenantId]) {
+      this.stats.byTenant[tenantId] = { totalTokens: 0, totalInteractions: 0 };
+    }
+    this.stats.byTenant[tenantId].totalTokens += tokensUsed;
+    this.stats.byTenant[tenantId].totalInteractions += interactions;
+
+    // Atualizar estatísticas por bot
+    if (!this.stats.byBot[botId]) {
+      this.stats.byBot[botId] = { totalTokens: 0, totalInteractions: 0 };
+    }
+    this.stats.byBot[botId].totalTokens += tokensUsed;
+    this.stats.byBot[botId].totalInteractions += interactions;
+
+    // Atualizar estatísticas gerais
+    this.stats.total.totalTokens += tokensUsed;
+    this.stats.total.totalInteractions += interactions;
   }
 
-  private combineStats(local: any, server: any): any {
+  private combineStats(local: TelemetryStats, server: any): any {
     return {
-      totalUsage: (local.totalUsage || 0) + (server.totalUsage || 0),
-      totalTokens: (local.totalTokens || 0) + (server.totalTokens || 0),
-      sessionCount: Math.max(local.sessionCount || 0, server.sessionCount || 0),
-      lastReport: Math.max(local.lastReport || 0, server.lastReport || 0)
+      byUser: {
+        ...local.byUser,
+        ...server.byUser
+      },
+      byTenant: {
+        ...local.byTenant,
+        ...server.byTenant
+      },
+      byBot: {
+        ...local.byBot,
+        ...server.byBot
+      },
+      total: {
+        totalTokens: (local.total.totalTokens || 0) + (server.total?.totalTokens || 0),
+        totalInteractions: (local.total.totalInteractions || 0) + (server.total?.totalInteractions || 0)
+      }
     };
   }
 } 
