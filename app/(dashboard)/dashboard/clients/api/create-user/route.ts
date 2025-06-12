@@ -2,6 +2,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { sendWelcomeEmail } from '@/app/lib/emailService';
 
 // Criar cliente com service_role
 const supabaseAdmin = createClient(
@@ -32,6 +33,8 @@ export async function POST(request: Request) {
 
     // Obter os dados do novo usuário do corpo da requisição
     const { email, full_name, company, is_super_admin, password } = await request.json();
+
+    console.log('Iniciando criação de usuário:', { email, full_name, company });
 
     // Verificar se o email já existe
     const { data: existingUser } = await supabaseAdmin.auth.admin.listUsers({
@@ -65,6 +68,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Erro ao criar usuário' }, { status: 400 });
     }
 
+    console.log('Usuário criado com sucesso:', authData.user.id);
+
     // Atualizar o perfil criado automaticamente
     const { error: updateError } = await supabaseAdmin
       .from('profiles')
@@ -81,20 +86,31 @@ export async function POST(request: Request) {
       // Não retornamos erro aqui pois o usuário já foi criado
     }
 
-    // Enviar email com a senha
-    const { error: emailError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
-      data: {
-        full_name,
-        company,
-        is_super_admin,
-        password
-      }
-    });
-
-    if (emailError) {
-      console.error('Erro ao enviar email:', emailError);
-      // Não retornamos erro aqui pois o usuário já foi criado
+    // Enviar email de boas-vindas
+    try {
+      console.log('Iniciando envio de email de boas-vindas para:', email);
+      
+      await sendWelcomeEmail({
+        email,
+        fullName: full_name,
+        password,
+        company
+      });
+      
+      console.log('Email de boas-vindas enviado com sucesso');
+    } catch (emailError) {
+      console.error('Erro detalhado ao enviar email de boas-vindas:', {
+        error: emailError instanceof Error ? emailError.message : 'Erro desconhecido',
+        stack: emailError instanceof Error ? emailError.stack : undefined,
+        code: emailError instanceof Error ? (emailError as any).code : undefined
+      });
+      
+      // Retornamos um aviso, mas não falhamos a criação do usuário
+      return NextResponse.json({ 
+        message: 'Usuário criado com sucesso, mas houve um erro ao enviar o email de boas-vindas',
+        user: authData.user,
+        emailError: emailError instanceof Error ? emailError.message : 'Erro desconhecido'
+      });
     }
 
     return NextResponse.json({ 
