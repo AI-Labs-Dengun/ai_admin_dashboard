@@ -53,7 +53,7 @@ export const checkUserPermissions = async (): Promise<UserPermissions | null> =>
 
         // Verificar acesso do tenant para usuário não super-admin
         const { data: tenantUser, error: tenantError } = await supabase
-          .from('tenant_users')
+          .from('super_tenant_users')
           .select('allow_bot_access')
           .eq('user_id', user.id)
           .maybeSingle();
@@ -86,7 +86,7 @@ export const checkUserPermissions = async (): Promise<UserPermissions | null> =>
 
     // Verificar acesso do tenant para usuário não super-admin
     const { data: tenantUser, error: tenantError } = await supabase
-      .from('tenant_users')
+      .from('super_tenant_users')
       .select('allow_bot_access')
       .eq('user_id', user.id)
       .maybeSingle();

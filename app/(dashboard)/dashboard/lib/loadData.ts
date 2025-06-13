@@ -48,7 +48,7 @@ export const loadData = async () => {
     // Se não for super-admin, retornar apenas os dados do próprio usuário
     if (!isSuperAdmin) {
       const userResponse = await supabase
-        .from("tenant_users")
+        .from("super_tenant_users")
         .select(`
           user_id,
           tenant_id,
@@ -59,10 +59,10 @@ export const loadData = async () => {
             email,
             full_name
           ),
-          user_bots!user_id (
+          client_user_bots!user_id (
             bot_id,
             enabled,
-            bots (
+            super_bots (
               id,
               name
             )
@@ -77,7 +77,7 @@ export const loadData = async () => {
       }
 
       const tenantResponse = await supabase
-        .from("tenants")
+        .from("super_tenants")
         .select("*")
         .eq("id", userResponse.data?.[0]?.tenant_id)
         .order("name");
@@ -89,7 +89,7 @@ export const loadData = async () => {
 
       // Buscar uso de tokens
       const tokenUsageResponse = await supabase
-        .from("token_usage")
+        .from("client_token_usage")
         .select("*")
         .eq("user_id", permissions.userId)
         .order("created_at", { ascending: false })
@@ -125,7 +125,7 @@ export const loadData = async () => {
 
     // Se for super-admin, retornar todos os dados
     const usersResponse = await supabase
-      .from("tenant_users")
+      .from("super_tenant_users")
       .select(`
         user_id,
         tenant_id,
@@ -136,11 +136,11 @@ export const loadData = async () => {
           email,
           full_name
         ),
-        tenants!tenant_id (
-          tenant_bots (
+        super_tenants!tenant_id (
+          super_tenant_bots (
             bot_id,
             enabled,
-            bots (
+            super_bots (
               id,
               name
             )
@@ -155,7 +155,7 @@ export const loadData = async () => {
     }
 
     const tenantsResponse = await supabase
-      .from("tenants")
+      .from("super_tenants")
       .select("*")
       .order("name");
 
@@ -167,7 +167,7 @@ export const loadData = async () => {
     // Buscar uso de tokens para todos os usuários
     const userIds = usersResponse.data.map(user => user.user_id);
     const tokenUsageResponse = await supabase
-      .from("token_usage")
+      .from("client_token_usage")
       .select("*")
       .in("user_id", userIds)
       .order("created_at", { ascending: false });

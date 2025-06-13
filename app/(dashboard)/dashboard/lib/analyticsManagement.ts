@@ -6,7 +6,7 @@ export const getTokenUsageAnalytics = async (tenantId: string, startDate: string
   
   try {
     const { data, error } = await supabase
-      .from("token_usage")
+      .from("client_token_usage")
       .select("*")
       .match({ tenant_id: tenantId })
       .gte("created_at", startDate)
@@ -28,10 +28,10 @@ export const getBotUsageAnalytics = async (tenantId: string, startDate: string, 
   
   try {
     const { data, error } = await supabase
-      .from("token_usage")
+      .from("client_token_usage")
       .select(`
         *,
-        bots (
+        super_bots (
           name
         )
       `)
@@ -55,7 +55,7 @@ export const getUserActivityAnalytics = async (tenantId: string, startDate: stri
   
   try {
     const { data, error } = await supabase
-      .from("token_usage")
+      .from("client_token_usage")
       .select(`
         *,
         profiles (
