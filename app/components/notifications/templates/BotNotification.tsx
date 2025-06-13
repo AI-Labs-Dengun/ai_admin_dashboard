@@ -7,6 +7,7 @@ interface BotNotificationProps extends Omit<BaseNotificationProps, "type" | "tit
   request_id?: string;
   bot_name: string;
   bot_description?: string;
+  status: "pending" | "approved" | "rejected";
 }
 
 export function BotNotification(props: BotNotificationProps) {

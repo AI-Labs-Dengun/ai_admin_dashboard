@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { BotNotification } from '../types';
+import { BotNotification, BotRequest } from '../types';
 
 export class BotRegisterNotification {
   private supabase: SupabaseClient;
@@ -9,189 +9,269 @@ export class BotRegisterNotification {
   }
 
   /**
-   * Cria uma notificação para uma solicitação de bot pendente
+   * Verifica se o usuário atual é super admin
    */
-  async createNotificationFromRequest(request: any): Promise<BotNotification | null> {
+  private async checkSuperAdmin(): Promise<boolean> {
     try {
-      console.log('[BotRegisterNotification] Verificando notificação para request:', request.id);
+      // First check if user is authenticated
+      const { data: { session }, error: sessionError } = await this.supabase.auth.getSession();
       
-      // Verificar se já existe uma notificação para esta solicitação
-      const { data: existingNotification, error: checkError } = await this.supabase
-        .from('bot_notifications')
-        .select('*')
-        .or(`bot_id.eq.${request.id},notification_data->requestId.eq.${request.id}`)
-        .single();
-
-      if (checkError && checkError.code !== 'PGRST116') {
-        console.error('[BotRegisterNotification] Erro ao checar notificação existente:', checkError);
+      if (sessionError || !session) {
+        console.log('[BotRegisterNotification] Usuário não autenticado');
+        return false;
       }
 
-      if (existingNotification) {
-        console.log('[BotRegisterNotification] Notificação já existe para esta solicitação:', request.id);
-        return existingNotification;
-      }
-
-      // Criar nova notificação
-      const { data: notification, error } = await this.supabase
-        .from('bot_notifications')
-        .insert([
-          {
-            bot_id: request.id,
-            bot_name: request.bot_name,
-            bot_description: request.bot_description,
-            notification_data: {
-              requestId: request.id,
-              type: 'bot_request',
-              status: 'pending',
-              capabilities: request.bot_capabilities,
-              contactEmail: request.contact_email,
-              website: request.website,
-              max_tokens_per_request: request.max_tokens_per_request
-            },
-            status: 'pending'
-          }
-        ])
-        .select()
+      const { data: profile, error } = await this.supabase
+        .from('profiles')
+        .select('is_super_admin')
+        .eq('id', session.user.id)
         .single();
 
       if (error) {
-        console.error('[BotRegisterNotification] Erro ao criar notificação:', error);
-        return null;
+        console.error('[BotRegisterNotification] Erro ao verificar super_admin:', error);
+        return false;
       }
 
-      console.log('[BotRegisterNotification] Notificação criada para request:', request.id);
-      return notification;
+      console.log('[BotRegisterNotification] Status de super_admin:', profile?.is_super_admin);
+      return profile?.is_super_admin || false;
     } catch (error) {
-      console.error('[BotRegisterNotification] Erro ao processar notificação:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Processa todas as solicitações pendentes que ainda não possuem notificação
-   */
-  async processAllPendingRequests(): Promise<void> {
-    try {
-      console.log('[BotRegisterNotification] Processando solicitações pendentes...');
-      // Buscar todas as solicitações pendentes
-      const { data: pendingRequests, error } = await this.supabase
-        .from('bot_requests')
-        .select('*')
-        .eq('status', 'pending');
-
-      if (error) throw error;
-      if (!pendingRequests) return;
-
-      for (const request of pendingRequests) {
-        await this.createNotificationFromRequest(request);
-      }
-      console.log('[BotRegisterNotification] Processamento de pendentes concluído.');
-    } catch (error) {
-      console.error('[BotRegisterNotification] Erro ao processar solicitações pendentes:', error);
-    }
-  }
-
-  /**
-   * Atualiza o status da notificação e da solicitação do bot
-   */
-  async updateNotificationStatus(
-    notificationId: string,
-    requestId: string,
-    action: 'accept' | 'reject'
-  ): Promise<boolean> {
-    try {
-      // Primeiro, atualizar o status da solicitação via API
-      const response = await fetch(`/api/bots/request/${requestId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          status: action === 'accept' ? 'approved' : 'rejected',
-          message: action === 'accept' ? 'Bot aprovado com sucesso' : 'Bot rejeitado'
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Erro ao atualizar status da solicitação');
-      }
-
-      // Depois, atualizar o status da notificação
-      const { error: notificationError } = await this.supabase
-        .from('bot_notifications')
-        .update({ status: action === 'accept' ? 'accepted' : 'rejected' })
-        .eq('id', notificationId);
-
-      if (notificationError) throw notificationError;
-
-      return true;
-    } catch (error) {
-      console.error('[BotRegisterNotification] Erro ao atualizar status:', error);
+      console.error('[BotRegisterNotification] Erro ao verificar super_admin:', error);
       return false;
     }
   }
 
   /**
-   * Carrega todas as notificações pendentes
+   * Carrega todas as solicitações pendentes
    */
   async loadPendingNotifications(): Promise<BotNotification[]> {
     try {
-      const { data, error } = await this.supabase
-        .from('bot_notifications')
+      console.log('[BotRegisterNotification] Iniciando carregamento de solicitações pendentes...');
+      
+      // Verificar se é super admin
+      const isSuperAdmin = await this.checkSuperAdmin();
+      if (!isSuperAdmin) {
+        console.error('[BotRegisterNotification] Usuário não é super_admin');
+        return [];
+      }
+
+      // Primeiro, vamos verificar se existem registros na tabela sem filtro
+      const { data: allRequests, error: allRequestsError } = await this.supabase
+        .from('bot_requests')
         .select('*')
+        .order('created_at', { ascending: false });
+
+      if (allRequestsError) {
+        console.error('[BotRegisterNotification] Erro ao buscar todos os registros:', allRequestsError);
+        console.error('[BotRegisterNotification] Detalhes do erro:', {
+          code: allRequestsError.code,
+          message: allRequestsError.message,
+          details: allRequestsError.details
+        });
+      } else {
+        console.log('[BotRegisterNotification] Todos os registros encontrados:', allRequests);
+        console.log('[BotRegisterNotification] Número total de registros:', allRequests?.length || 0);
+      }
+
+      // Agora vamos buscar as solicitações pendentes com mais detalhes
+      const { data: pendingRequests, error } = await this.supabase
+        .from('bot_requests')
+        .select(`
+          id,
+          bot_name,
+          bot_description,
+          bot_capabilities,
+          contact_email,
+          website,
+          max_tokens_per_request,
+          status,
+          created_at,
+          updated_at,
+          message
+        `)
         .eq('status', 'pending')
         .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data || [];
+
+      if (error) {
+        console.error('[BotRegisterNotification] Erro ao carregar solicitações pendentes:', error);
+        console.error('[BotRegisterNotification] Detalhes do erro:', {
+          code: error.code,
+          message: error.message,
+          details: error.details
+        });
+        return [];
+      }
+
+      console.log('[BotRegisterNotification] Query executada com sucesso');
+      console.log('[BotRegisterNotification] Solicitações pendentes encontradas:', pendingRequests);
+      console.log('[BotRegisterNotification] Número de solicitações pendentes:', pendingRequests?.length || 0);
+
+      if (!pendingRequests || pendingRequests.length === 0) {
+        console.log('[BotRegisterNotification] Nenhuma solicitação pendente encontrada');
+        return [];
+      }
+
+      // Converter solicitações para o formato de notificação
+      const notifications = pendingRequests.map(request => {
+        console.log('[BotRegisterNotification] Convertendo solicitação para notificação:', request);
+        return this.convertRequestToNotification(request);
+      });
+
+      console.log('[BotRegisterNotification] Notificações convertidas:', notifications);
+      console.log('[BotRegisterNotification] Número de notificações:', notifications.length);
+      return notifications;
     } catch (error) {
-      console.error('[BotRegisterNotification] Erro ao carregar notificações:', error);
+      console.error('[BotRegisterNotification] Erro ao carregar solicitações:', error);
+      if (error instanceof Error) {
+        console.error('[BotRegisterNotification] Detalhes do erro:', {
+          message: error.message,
+          stack: error.stack
+        });
+      }
       return [];
     }
   }
 
   /**
-   * Configura os listeners de realtime para novas solicitações
+   * Converte uma solicitação para o formato de notificação
    */
-  setupRealtimeListeners(
-    onNewRequest: (request: any) => void,
-    onNotificationUpdate: () => void
-  ) {
-    // Listener para novas solicitações (sem filtro)
-    const requestsChannel = this.supabase
-      .channel('bot_requests')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'bot_requests',
-        },
-        (payload) => {
-          if (payload.new?.status === 'pending') {
-            console.log('[BotRegisterNotification] Nova solicitação pending detectada:', payload.new.id);
-            onNewRequest(payload.new);
-          }
-        }
-      )
-      .subscribe();
-    const notificationsChannel = this.supabase
-      .channel('bot_notifications')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'bot_notifications'
-        },
-        () => {
-          onNotificationUpdate();
-        }
-      )
-      .subscribe();
-    return () => {
-      this.supabase.removeChannel(requestsChannel);
-      this.supabase.removeChannel(notificationsChannel);
+  private convertRequestToNotification(request: BotRequest): BotNotification {
+    console.log('[BotRegisterNotification] Iniciando conversão da solicitação:', request);
+
+    if (!request || !request.id) {
+      console.error('[BotRegisterNotification] Solicitação inválida:', request);
+      throw new Error('Solicitação inválida');
+    }
+
+    const notification: BotNotification = {
+      id: request.id,
+      type: 'bot',
+      status: request.status,
+      created_at: request.created_at,
+      bot_id: request.id,
+      request_id: request.id,
+      bot_name: request.bot_name,
+      bot_description: request.bot_description,
+      notification_data: {
+        requestId: request.id,
+        type: 'bot_request',
+        status: request.status,
+        capabilities: request.bot_capabilities || [],
+        contactEmail: request.contact_email,
+        website: request.website,
+        max_tokens_per_request: request.max_tokens_per_request || 1000
+      }
     };
+
+    console.log('[BotRegisterNotification] Notificação convertida:', notification);
+    return notification;
+  }
+
+  /**
+   * Atualiza o status da solicitação do bot
+   */
+  async updateNotificationStatus(
+    requestId: string,
+    action: 'accept' | 'reject'
+  ): Promise<boolean> {
+    try {
+      console.log('[BotRegisterNotification] Iniciando atualização de status:', { requestId, action });
+
+      // Primeiro, buscar a solicitação atual
+      const { data: request, error: fetchError } = await this.supabase
+        .from('bot_requests')
+        .select('*')
+        .eq('id', requestId)
+        .single();
+
+      if (fetchError || !request) {
+        console.error('[BotRegisterNotification] Erro ao buscar solicitação:', fetchError);
+        throw new Error('Solicitação não encontrada');
+      }
+
+      console.log('[BotRegisterNotification] Solicitação encontrada:', request);
+
+      if (action === 'accept') {
+        console.log('[BotRegisterNotification] Iniciando processo de aprovação do bot');
+        
+        // Criar o bot na tabela bots
+        const { data: bot, error: botError } = await this.supabase
+          .from('bots')
+          .insert({
+            name: request.bot_name,
+            description: request.bot_description,
+            bot_capabilities: request.bot_capabilities,
+            contact_email: request.contact_email,
+            website: request.website,
+            max_tokens_per_request: request.max_tokens_per_request
+          })
+          .select()
+          .single();
+
+        if (botError) {
+          console.error('[BotRegisterNotification] Erro ao criar bot:', botError);
+          throw new Error('Erro ao criar bot');
+        }
+
+        console.log('[BotRegisterNotification] Bot criado com sucesso:', bot);
+
+        // Buscar todos os tenants ativos
+        const { data: tenants, error: tenantsError } = await this.supabase
+          .from('tenants')
+          .select('id');
+
+        if (tenantsError) {
+          console.error('[BotRegisterNotification] Erro ao buscar tenants:', tenantsError);
+          throw new Error('Erro ao buscar tenants');
+        }
+
+        console.log('[BotRegisterNotification] Tenants encontrados:', tenants);
+
+        // Criar associações com todos os tenants ativos
+        if (tenants && tenants.length > 0) {
+          const tenantBotInserts = tenants.map(tenant => ({
+            tenant_id: tenant.id,
+            bot_id: bot.id,
+            enabled: true,
+            created_at: new Date().toISOString()
+          }));
+
+          console.log('[BotRegisterNotification] Criando associações com tenants:', tenantBotInserts);
+
+          const { error: tenantBotError } = await this.supabase
+            .from('tenant_bots')
+            .insert(tenantBotInserts);
+
+          if (tenantBotError) {
+            console.error('[BotRegisterNotification] Erro ao associar bot aos tenants:', tenantBotError);
+            throw new Error('Erro ao associar bot aos tenants');
+          }
+
+          console.log('[BotRegisterNotification] Associações com tenants criadas com sucesso');
+        }
+      }
+
+      // Atualizar status da solicitação
+      console.log('[BotRegisterNotification] Atualizando status da solicitação para:', action === 'accept' ? 'approved' : 'rejected');
+
+      const { error: updateError } = await this.supabase
+        .from('bot_requests')
+        .update({
+          status: action === 'accept' ? 'approved' : 'rejected',
+          message: action === 'accept' ? 'Bot aprovado com sucesso' : 'Bot rejeitado',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', requestId);
+
+      if (updateError) {
+        console.error('[BotRegisterNotification] Erro ao atualizar status da solicitação:', updateError);
+        throw new Error('Erro ao atualizar status da solicitação');
+      }
+
+      console.log('[BotRegisterNotification] Status atualizado com sucesso');
+      return true;
+    } catch (error) {
+      console.error('[BotRegisterNotification] Erro ao atualizar status:', error);
+      return false;
+    }
   }
 } 

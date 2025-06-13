@@ -7,7 +7,7 @@ export interface BaseNotificationProps {
   type: "bot" | "chat" | "ticket";
   title: string;
   description?: ReactNode;
-  status: "pending" | "accepted" | "rejected";
+  status: "pending" | "approved" | "rejected";
   created_at: string;
   notification_data: any;
   onAction?: (action: "accept" | "reject") => void;
