@@ -72,7 +72,7 @@ export const createUser = async (newUser: NewUser) => {
     }
 
     // Depois, associar ao tenant
-    const { error: tenantError } = await supabase.from("tenant_users").insert([
+    const { error: tenantError } = await supabase.from("super_tenant_users").insert([
       {
         tenant_id: newUser.tenant_id,
         user_id: authData.user.id,
@@ -94,7 +94,7 @@ export const createUser = async (newUser: NewUser) => {
       try {
         // Primeiro, verificar se já existem bots associados ao tenant
         const { data: existingBots } = await supabase
-          .from("tenant_bots")
+          .from("super_tenant_bots")
           .select("bot_id")
           .eq("tenant_id", newUser.tenant_id);
 
@@ -103,7 +103,7 @@ export const createUser = async (newUser: NewUser) => {
         const newBotIds = newUser.selected_bots.filter(botId => !existingBotIds.includes(botId));
 
         if (newBotIds.length > 0) {
-          // Criar associações na tabela tenant_bots
+          // Criar associações na tabela super_tenant_bots
           const tenantBotInserts = newBotIds.map(botId => ({
             tenant_id: newUser.tenant_id,
             bot_id: botId,
@@ -112,7 +112,7 @@ export const createUser = async (newUser: NewUser) => {
           }));
 
           const { error: tenantBotError } = await supabase
-            .from("tenant_bots")
+            .from("super_tenant_bots")
             .insert(tenantBotInserts);
 
           if (tenantBotError) {
@@ -120,7 +120,7 @@ export const createUser = async (newUser: NewUser) => {
             toast.error("Usuário criado, mas houve um erro ao associar alguns bots ao tenant");
           }
 
-          // Criar associações na tabela user_bots
+          // Criar associações na tabela client_user_bots
           const userBotInserts = newBotIds.map(botId => ({
             user_id: authData.user.id,
             tenant_id: newUser.tenant_id,
@@ -130,7 +130,7 @@ export const createUser = async (newUser: NewUser) => {
           }));
 
           const { error: userBotError } = await supabase
-            .from("user_bots")
+            .from("client_user_bots")
             .insert(userBotInserts);
 
           if (userBotError) {
@@ -166,9 +166,9 @@ export const deleteUser = async (userId: string, tenantId: string) => {
       throw new Error("Sem permissão para excluir usuários");
     }
 
-    // Primeiro, remover do tenant_users
+    // Primeiro, remover do super_tenant_users
     const { error: tenantError } = await supabase
-      .from("tenant_users")
+      .from("super_tenant_users")
       .delete()
       .match({ user_id: userId, tenant_id: tenantId });
 
@@ -202,7 +202,7 @@ export const updateTokenLimit = async (userId: string, tenantId: string, newLimi
     }
 
     const { error } = await supabase
-      .from("tenant_users")
+      .from("super_tenant_users")
       .update({ token_limit: newLimit })
       .match({ user_id: userId, tenant_id: tenantId });
 
