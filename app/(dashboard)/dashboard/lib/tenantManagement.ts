@@ -6,7 +6,7 @@ export const createTenant = async (name: string) => {
   
   try {
     const { data, error } = await supabase
-      .from("tenants")
+      .from("super_tenants")
       .insert([{ name }])
       .select()
       .single();
@@ -27,7 +27,7 @@ export const updateTenant = async (tenantId: string, name: string) => {
   
   try {
     const { error } = await supabase
-      .from("tenants")
+      .from("super_tenants")
       .update({ name })
       .match({ id: tenantId });
 
@@ -47,7 +47,7 @@ export const deleteTenant = async (tenantId: string) => {
   
   try {
     const { error } = await supabase
-      .from("tenants")
+      .from("super_tenants")
       .delete()
       .match({ id: tenantId });
 
@@ -67,7 +67,7 @@ export const getTenantUsers = async (tenantId: string) => {
   
   try {
     const { data, error } = await supabase
-      .from("tenant_users")
+      .from("super_tenant_users")
       .select(`
         *,
         profiles (

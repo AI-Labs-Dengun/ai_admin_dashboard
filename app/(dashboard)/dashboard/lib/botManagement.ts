@@ -7,7 +7,7 @@ export const enableBot = async (tenantId: string, botId: string) => {
   
   try {
     const { error } = await supabase
-      .from("tenant_bots")
+      .from("super_tenant_bots")
       .upsert({
         tenant_id: tenantId,
         bot_id: botId,
@@ -30,7 +30,7 @@ export const disableBot = async (tenantId: string, botId: string) => {
   
   try {
     const { error } = await supabase
-      .from("tenant_bots")
+      .from("super_tenant_bots")
       .update({ enabled: false })
       .match({ tenant_id: tenantId, bot_id: botId });
 
@@ -50,7 +50,7 @@ export const getBotUsage = async (tenantId: string, botId: string) => {
   
   try {
     const { data, error } = await supabase
-      .from("token_usage")
+      .from("client_token_usage")
       .select("*")
       .match({ tenant_id: tenantId, bot_id: botId })
       .order("created_at", { ascending: false })
@@ -77,7 +77,7 @@ export const toggleBotAccess = async (userId: string, tenantId: string, currentV
     }
 
     const { error } = await supabase
-      .from("tenant_users")
+      .from("super_tenant_users")
       .update({ allow_bot_access: !currentValue })
       .match({ user_id: userId, tenant_id: tenantId });
 
@@ -100,7 +100,7 @@ export const toggleBot = async (userId: string, botId: string, currentEnabled: b
 
     // Atualizar apenas o estado de ativação do bot
     const { error } = await supabase
-      .from("user_bots")
+      .from("client_user_bots")
       .update({ enabled: newEnabledState })
       .match({ user_id: userId, bot_id: botId });
 
@@ -123,7 +123,7 @@ export const toggleAllBots = async (userId: string, tenantId: string, currentEna
 
     // Atualizar apenas o estado de ativação de todos os bots do usuário
     const { error } = await supabase
-      .from("user_bots")
+      .from("client_user_bots")
       .update({ enabled: newEnabledState })
       .match({ user_id: userId, tenant_id: tenantId });
 
