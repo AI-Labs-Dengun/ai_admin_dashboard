@@ -20,6 +20,30 @@ export async function POST(request: Request) {
       );
     }
 
+    // Verificar se o perfil já existe
+    const { data: existingProfile, error: checkError } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (checkError && checkError.code !== 'PGRST116') {
+      console.error('Erro ao verificar perfil existente:', checkError);
+      return NextResponse.json(
+        { error: 'Erro ao verificar perfil existente' },
+        { status: 500 }
+      );
+    }
+
+    // Se o perfil já existe, retornar sucesso
+    if (existingProfile) {
+      return NextResponse.json({ 
+        success: true, 
+        profile: existingProfile,
+        message: 'Perfil já existe'
+      });
+    }
+
     // Criar perfil usando o service role
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
@@ -58,7 +82,11 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ success: true, profile: verifyProfile });
+    return NextResponse.json({ 
+      success: true, 
+      profile: verifyProfile,
+      message: 'Perfil criado com sucesso'
+    });
   } catch (error) {
     console.error('Erro interno:', error);
     return NextResponse.json(
