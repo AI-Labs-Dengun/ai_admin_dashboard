@@ -54,16 +54,6 @@ export function DashboardSidebar({ isOpen, onToggle }: SidebarProps) {
       icon: Coins,
     },
     {
-      name: "Chat Summaries",
-      href: "/dashboard/chat-summaries",
-      icon: MessageSquare,
-    },
-    {
-      name: "Error Logs",
-      href: "/dashboard/error-logs",
-      icon: AlertTriangle,
-    },
-    {
       name: "Analytics",
       href: "/dashboard/analytics",
       icon: BarChart3,
@@ -206,10 +196,6 @@ export function DashboardSidebar({ isOpen, onToggle }: SidebarProps) {
           !isOpen && "flex justify-center py-4 px-0",
         )}
       >
-        <div className={cn("flex items-center mt-2 gap-2 text-sm text-muted-foreground", !isOpen && "sr-only")}>
-          <Building2 className="h-4 w-4" />
-          <span>Acme Real Estate</span>
-        </div>
       </div>
     </aside>
   )
