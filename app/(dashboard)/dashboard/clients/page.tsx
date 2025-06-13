@@ -28,7 +28,7 @@ interface Profile {
   company: string;
   is_super_admin: boolean;
   created_at: string;
-  last_sign_in_at: string | null;
+  last_access: string | null;
 }
 
 export default function ClientsPage() {
@@ -162,8 +162,8 @@ export default function ClientsPage() {
                       {new Date(profile.created_at).toLocaleDateString('pt-BR')}
                     </TableCell>
                     <TableCell>
-                      {profile.last_sign_in_at 
-                        ? new Date(profile.last_sign_in_at).toLocaleDateString('pt-BR')
+                      {profile.last_access 
+                        ? new Date(profile.last_access).toLocaleDateString('pt-BR')
                         : 'Nunca acessou'}
                     </TableCell>
                     <TableCell>
