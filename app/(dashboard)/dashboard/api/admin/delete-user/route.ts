@@ -26,7 +26,7 @@ export async function POST(request: Request) {
 
     // 1. Remover todas as associações com bots
     const { error: userBotsError } = await supabaseAdmin
-      .from('user_bots')
+      .from('client_user_bots')
       .delete()
       .eq('user_id', userId);
 
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
 
     // 2. Remover uso de tokens
     const { error: tokenUsageError } = await supabaseAdmin
-      .from('token_usage')
+      .from('client_token_usage')
       .delete()
       .eq('user_id', userId);
 
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
 
     // 3. Remover associações com tenants
     const { error: tenantUsersError } = await supabaseAdmin
-      .from('tenant_users')
+      .from('super_tenant_users')
       .delete()
       .eq('user_id', userId);
 
