@@ -75,7 +75,29 @@ export function EditBotModal({ isOpen, onClose, bot, onSuccess }: EditBotModalPr
     
     setIsLoading(true);
     try {
-      const { error } = await supabase
+      // Verificar se o usuário é super admin
+      const { data: { user } } = await supabase.auth.getUser();
+      console.log("Usuário autenticado:", user);
+
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('is_super_admin')
+        .eq('id', user?.id)
+        .single();
+
+      console.log("Perfil do usuário:", profile);
+      if (profileError) {
+        console.error("Erro ao verificar perfil:", profileError);
+        throw profileError;
+      }
+
+      if (!profile?.is_super_admin) {
+        throw new Error("Apenas super admins podem editar bots");
+      }
+
+      console.log("Atualizando super_bots...");
+      // 1. Atualizar o bot na tabela super_bots
+      const { error: updateBotError } = await supabase
         .from("super_bots")
         .update({
           name: data.name,
@@ -88,14 +110,33 @@ export function EditBotModal({ isOpen, onClose, bot, onSuccess }: EditBotModalPr
         })
         .eq("id", bot.id);
 
-      if (error) throw error;
+      if (updateBotError) {
+        console.error("Erro ao atualizar super_bots:", updateBotError);
+        throw updateBotError;
+      }
+
+      console.log("Atualizando client_bot_usage...");
+      // 2. Atualizar os registros na tabela client_bot_usage
+      const { error: updateUsageError } = await supabase
+        .from("client_bot_usage")
+        .update({
+          bot_name: data.name,
+          website: data.website || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq("bot_id", bot.id);
+
+      if (updateUsageError) {
+        console.error("Erro ao atualizar client_bot_usage:", updateUsageError);
+        throw updateUsageError;
+      }
 
       toast.success("Bot atualizado com sucesso!");
       onSuccess();
       onClose();
     } catch (error) {
       console.error("Erro ao atualizar bot:", error);
-      toast.error("Erro ao atualizar bot");
+      toast.error(error instanceof Error ? error.message : "Erro ao atualizar bot");
     } finally {
       setIsLoading(false);
     }
