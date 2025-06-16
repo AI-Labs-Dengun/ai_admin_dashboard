@@ -50,7 +50,10 @@ interface TenantBot {
 interface Tenant {
   id: string;
   name: string;
+  token_limit: number;
+  is_active: boolean;
   created_at: string;
+  updated_at: string;
   tenant_bots: TenantBot[];
 }
 
@@ -119,7 +122,7 @@ export default function TenantsPage() {
 
       // Carregar os bots primeiro
       const { data: botsData, error: botsError } = await supabase
-        .from("bots")
+        .from("super_bots")
         .select("*")
         .order("name");
 
@@ -136,7 +139,7 @@ export default function TenantsPage() {
 
       // Carregar os tenants
       const { data: tenantsData, error: tenantsError } = await supabase
-        .from("tenants")
+        .from("super_tenants")
         .select("*")
         .order("created_at", { ascending: false });
 
@@ -152,7 +155,7 @@ export default function TenantsPage() {
 
       // Carregar os tenant_bots
       const { data: tenantBotsData, error: tenantBotsError } = await supabase
-        .from("tenant_bots")
+        .from("super_tenant_bots")
         .select("tenant_id, bot_id, enabled")
         .in("tenant_id", tenantsData.map(t => t.id))
         .order("tenant_id");
@@ -192,15 +195,18 @@ export default function TenantsPage() {
       if (editingTenant) {
         // Atualizar tenant existente
         const { error: tenantError } = await supabase
-          .from("tenants")
-          .update({ name: newTenant.name })
+          .from("super_tenants")
+          .update({ 
+            name: newTenant.name,
+            updated_at: new Date().toISOString()
+          })
           .eq("id", editingTenant.id);
 
         if (tenantError) throw tenantError;
 
         // Remover todas as associações existentes
         const { error: deleteError } = await supabase
-          .from("tenant_bots")
+          .from("super_tenant_bots")
           .delete()
           .eq("tenant_id", editingTenant.id);
 
@@ -211,10 +217,12 @@ export default function TenantsPage() {
           tenant_id: editingTenant.id,
           bot_id: botId,
           enabled: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         }));
 
         const { error: botError } = await supabase
-          .from("tenant_bots")
+          .from("super_tenant_bots")
           .insert(tenantBotInserts);
 
         if (botError) throw botError;
@@ -223,8 +231,14 @@ export default function TenantsPage() {
       } else {
         // Criar novo tenant
         const { data: tenantData, error: tenantError } = await supabase
-          .from("tenants")
-          .insert([{ name: newTenant.name }])
+          .from("super_tenants")
+          .insert([{ 
+            name: newTenant.name,
+            token_limit: 1000000,
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }])
           .select();
 
         if (tenantError) throw tenantError;
@@ -233,10 +247,12 @@ export default function TenantsPage() {
           tenant_id: tenantData[0].id,
           bot_id: botId,
           enabled: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         }));
 
         const { error: botError } = await supabase
-          .from("tenant_bots")
+          .from("super_tenant_bots")
           .insert(tenantBotInserts);
 
         if (botError) throw botError;
@@ -266,15 +282,17 @@ export default function TenantsPage() {
   const handleDeleteTenant = async (tenantId: string) => {
     try {
       const { error } = await supabase
-        .from("tenants")
+        .from("super_tenants")
         .delete()
         .eq("id", tenantId);
 
       if (error) throw error;
 
       setTenants(tenants.filter((tenant) => tenant.id !== tenantId));
+      toast.success("Tenant excluído com sucesso!");
     } catch (error) {
       console.error("Erro ao excluir tenant:", error);
+      toast.error("Erro ao excluir tenant");
     }
   };
 
