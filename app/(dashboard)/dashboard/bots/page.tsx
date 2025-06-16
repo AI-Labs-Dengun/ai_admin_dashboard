@@ -26,6 +26,8 @@ import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { checkUserPermissions } from "@/app/(dashboard)/dashboard/lib/authManagement";
 import { BotDetailsModal } from "./components/BotDetailsModal";
+import { CreateBotModal } from "./components/CreateBotModal";
+import { DeleteBotModal } from "./components/DeleteBotModal";
 
 interface Bot {
   id: string;
@@ -40,12 +42,11 @@ interface Bot {
 
 export default function BotsPage() {
   const [bots, setBots] = useState<Bot[]>([]);
-  const [newBot, setNewBot] = useState({ name: "", description: "" });
   const [isLoading, setIsLoading] = useState(true);
-  const [isCreating, setIsCreating] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedBot, setSelectedBot] = useState<Bot | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const { supabase } = useSupabase();
   const router = useRouter();
@@ -84,7 +85,7 @@ export default function BotsPage() {
   const loadBots = async () => {
     try {
       const { data, error } = await supabase
-        .from("bots")
+        .from("super_bots")
         .select("*")
         .order("created_at", { ascending: false });
 
@@ -98,55 +99,9 @@ export default function BotsPage() {
     }
   };
 
-  const handleCreateBot = async () => {
-    if (!isSuperAdmin) {
-      toast.error("Apenas super-admins podem criar bots");
-      return;
-    }
-
-    setIsCreating(true);
-    try {
-      const { data, error } = await supabase
-        .from("bots")
-        .insert([newBot])
-        .select();
-
-      if (error) throw error;
-
-      setBots([data[0], ...bots]);
-      setNewBot({ name: "", description: "" });
-      setIsDialogOpen(false);
-      toast.success("Bot criado com sucesso!");
-    } catch (error) {
-      console.error("Erro ao criar bot:", error);
-      toast.error("Erro ao criar bot");
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
-  const handleDeleteBot = async (botId: string) => {
-    if (!isSuperAdmin) {
-      toast.error("Apenas super-admins podem excluir bots");
-      return;
-    }
-
-    if (!confirm("Tem certeza que deseja excluir este bot?")) return;
-
-    try {
-      const { error } = await supabase
-        .from("bots")
-        .delete()
-        .eq("id", botId);
-
-      if (error) throw error;
-
-      setBots(bots.filter((bot) => bot.id !== botId));
-      toast.success("Bot excluído com sucesso!");
-    } catch (error) {
-      console.error("Erro ao excluir bot:", error);
-      toast.error("Erro ao excluir bot");
-    }
+  const handleDeleteBot = (bot: Bot) => {
+    setSelectedBot(bot);
+    setIsDeleteModalOpen(true);
   };
 
   const handleViewDetails = (bot: Bot) => {
@@ -171,53 +126,9 @@ export default function BotsPage() {
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">Gerenciamento de Bots</h1>
         {isSuperAdmin && (
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>Criar Novo Bot</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Criar Novo Bot</DialogTitle>
-                <DialogDescription>
-                  Preencha os dados do novo bot abaixo.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="name">Nome do Bot</Label>
-                  <Input
-                    id="name"
-                    value={newBot.name}
-                    onChange={(e) =>
-                      setNewBot({ ...newBot, name: e.target.value })
-                    }
-                    placeholder="Digite o nome do bot"
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="description">Descrição</Label>
-                  <Textarea
-                    id="description"
-                    value={newBot.description}
-                    onChange={(e) =>
-                      setNewBot({ ...newBot, description: e.target.value })
-                    }
-                    placeholder="Digite a descrição do bot"
-                  />
-                </div>
-                <Button onClick={handleCreateBot} disabled={isCreating}>
-                  {isCreating ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Criando...
-                    </>
-                  ) : (
-                    "Criar Bot"
-                  )}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+          <Button onClick={() => setIsDialogOpen(true)}>
+            Criar Novo Bot
+          </Button>
         )}
       </div>
 
@@ -245,7 +156,7 @@ export default function BotsPage() {
                     <>
                       <Button
                         variant="destructive"
-                        onClick={() => handleDeleteBot(bot.id)}
+                        onClick={() => handleDeleteBot(bot)}
                       >
                         Excluir
                       </Button>
@@ -261,6 +172,22 @@ export default function BotsPage() {
       <BotDetailsModal
         isOpen={isDetailsModalOpen}
         onClose={() => setIsDetailsModalOpen(false)}
+        bot={selectedBot}
+        onSuccess={handleBotUpdate}
+      />
+
+      <CreateBotModal
+        isOpen={isDialogOpen}
+        onClose={() => setIsDialogOpen(false)}
+        onSuccess={handleBotUpdate}
+      />
+
+      <DeleteBotModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => {
+          setIsDeleteModalOpen(false);
+          setSelectedBot(null);
+        }}
         bot={selectedBot}
         onSuccess={handleBotUpdate}
       />
