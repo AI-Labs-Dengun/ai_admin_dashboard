@@ -89,7 +89,7 @@ export const loadData = async () => {
 
       // Buscar uso de tokens
       const tokenUsageResponse = await supabase
-        .from("client_token_usage")
+        .from("client_bot_usage")
         .select("*")
         .eq("user_id", permissions.userId)
         .order("created_at", { ascending: false })
@@ -167,7 +167,7 @@ export const loadData = async () => {
     // Buscar uso de tokens para todos os usuários
     const userIds = usersResponse.data.map(user => user.user_id);
     const tokenUsageResponse = await supabase
-      .from("client_token_usage")
+      .from("client_bot_usage")
       .select("*")
       .in("user_id", userIds)
       .order("created_at", { ascending: false });

@@ -50,7 +50,7 @@ export const getBotUsage = async (tenantId: string, botId: string) => {
   
   try {
     const { data, error } = await supabase
-      .from("client_token_usage")
+      .from("client_bot_usage")
       .select("*")
       .match({ tenant_id: tenantId, bot_id: botId })
       .order("created_at", { ascending: false })

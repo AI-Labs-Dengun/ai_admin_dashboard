@@ -7,7 +7,7 @@ export const getTokenUsage = async (userId: string, tenantId: string) => {
   
   try {
     const { data, error } = await supabase
-      .from("client_token_usage")
+      .from("client_bot_usage")
       .select("*")
       .match({ user_id: userId, tenant_id: tenantId })
       .order("created_at", { ascending: false })
@@ -28,7 +28,7 @@ export const getTenantTokenUsage = async (tenantId: string) => {
   
   try {
     const { data, error } = await supabase
-      .from("client_token_usage")
+      .from("client_bot_usage")
       .select("*")
       .match({ tenant_id: tenantId })
       .order("created_at", { ascending: false })
@@ -49,7 +49,7 @@ export const getTokenUsageSummary = async (tenantId: string) => {
   
   try {
     const { data, error } = await supabase
-      .from("client_token_usage")
+      .from("client_bot_usage")
       .select(`
         *,
         profiles (
@@ -80,14 +80,14 @@ export const resetUserTokens = async (userId: string, tenantId: string, botId?: 
   try {
     if (botId) {
       const { error } = await supabase
-        .from("client_token_usage")
+        .from("client_bot_usage")
         .delete()
         .match({ user_id: userId, tenant_id: tenantId, bot_id: botId });
 
       if (error) throw error;
     } else {
       const { error } = await supabase
-        .from("client_token_usage")
+        .from("client_bot_usage")
         .delete()
         .match({ user_id: userId, tenant_id: tenantId });
 
@@ -118,7 +118,7 @@ export const checkTokenBalance = async (userId: string, tenantId: string, botId:
 
     // Buscar uso atual de tokens
     const { data: usageData, error: usageError } = await supabase
-      .from("client_token_usage")
+      .from("client_bot_usage")
       .select("total_tokens")
       .match({ user_id: userId, tenant_id: tenantId, bot_id: botId })
       .order("created_at", { ascending: false })
@@ -160,7 +160,7 @@ export const recordTokenUsage = async (
   try {
     // Buscar uso atual de tokens
     const { data: currentUsage, error: usageError } = await supabase
-      .from("client_token_usage")
+      .from("client_bot_usage")
       .select("total_tokens")
       .match({ user_id: userId, tenant_id: tenantId, bot_id: botId })
       .order("created_at", { ascending: false })
@@ -173,7 +173,7 @@ export const recordTokenUsage = async (
 
     // Registrar novo uso
     const { error: insertError } = await supabase
-      .from("client_token_usage")
+      .from("client_bot_usage")
       .insert([
         {
           user_id: userId,
@@ -213,7 +213,7 @@ export const checkTokenBalanceServer = async (userId: string, tenantId: string, 
 
     // Buscar uso atual de tokens
     const { data: usageData, error: usageError } = await supabase
-      .from("client_token_usage")
+      .from("client_bot_usage")
       .select("total_tokens")
       .match({ user_id: userId, tenant_id: tenantId, bot_id: botId })
       .order("created_at", { ascending: false })
@@ -249,7 +249,7 @@ export async function recordTokenUsageServer(
   try {
     // Buscar uso atual de tokens
     const { data: currentUsage, error: usageError } = await supabase
-      .from("client_token_usage")
+      .from("client_bot_usage")
       .select("total_tokens")
       .match({ user_id: userId, tenant_id: tenantId, bot_id: botId })
       .order("created_at", { ascending: false })
@@ -262,7 +262,7 @@ export async function recordTokenUsageServer(
 
     // Registrar novo uso
     const { error: insertError } = await supabase
-      .from("client_token_usage")
+      .from("client_bot_usage")
       .insert([
         {
           user_id: userId,
