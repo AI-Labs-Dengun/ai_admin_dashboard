@@ -96,7 +96,7 @@ export default function AdminUsersPage() {
       const usersWithCorrectBotState = await Promise.all(
         fetchedUsers.map(async (user) => {
           const { data: userBots, error: userBotsError } = await supabase
-            .from("user_bots")
+            .from("client_user_bots")
             .select("bot_id, enabled")
             .match({ 
               user_id: user.user_id, 
@@ -126,7 +126,7 @@ export default function AdminUsersPage() {
 
       // Buscar lista de bots
       const { data: botsData, error: botsError } = await supabase
-        .from("bots")
+        .from("super_bots")
         .select("*")
         .order("name");
 
@@ -148,14 +148,16 @@ export default function AdminUsersPage() {
     try {
       // Buscar bots associados ao tenant
       const { data: tenantBotsData, error: tenantBotsError } = await supabase
-        .from("tenant_bots")
+        .from("super_tenant_bots")
         .select(`
           bot_id,
           enabled,
-          bots!inner (
+          super_bots!inner (
             id,
             name,
-            description
+            description,
+            bot_capabilities,
+            max_tokens_per_request
           )
         `)
         .eq("tenant_id", tenantId);
@@ -171,8 +173,8 @@ export default function AdminUsersPage() {
       // Mapear os bots do tenant
       const formattedBots = activeTenantBots.map(tb => ({
         id: tb.bot_id,
-        name: tb.bots.name || '',
-        description: tb.bots.description || '', //Erro já conhecido, po
+        name: tb.super_bots.name || '',
+        description: tb.super_bots.description || '',
         enabled: true
       }));
 
@@ -240,7 +242,7 @@ export default function AdminUsersPage() {
 
       // Verificar se o usuário já está associado ao tenant
       const { count, error: countError } = await supabase
-        .from('tenant_users')
+        .from('super_tenant_users')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId)
         .eq('tenant_id', newUser.tenant_id);
@@ -258,7 +260,7 @@ export default function AdminUsersPage() {
 
       // Criar associação com o tenant
       const { error: createError } = await supabase
-        .from('tenant_users')
+        .from('super_tenant_users')
         .insert({
           user_id: userId,
           tenant_id: newUser.tenant_id,
@@ -280,7 +282,7 @@ export default function AdminUsersPage() {
         }));
 
         const { error: botError } = await supabase
-          .from('user_bots')
+          .from('client_user_bots')
           .insert(botInserts);
 
         if (botError) throw botError;
@@ -297,7 +299,7 @@ export default function AdminUsersPage() {
       
       while (!tenantUserCreated && retryCount < maxRetries) {
         const { data: verifyUser, error: verifyError } = await supabase
-          .from('tenant_users')
+          .from('super_tenant_users')
           .select('*')
           .match({ 
             user_id: userId, 
@@ -407,7 +409,7 @@ export default function AdminUsersPage() {
 
       // Primeiro, verificar se existe o registro na tabela user_bots
       const { data: existingBot, error: checkError } = await supabase
-        .from("user_bots")
+        .from("client_user_bots")
         .select("*")
         .match({ user_id: userId, tenant_id: tenantId, bot_id: botId })
         .single();
@@ -421,7 +423,7 @@ export default function AdminUsersPage() {
       if (!existingBot) {
         // Se não existir, criar o registro com o novo estado
         const { error } = await supabase
-          .from("user_bots")
+          .from("client_user_bots")
           .insert([{
             user_id: userId,
             tenant_id: tenantId,
@@ -433,7 +435,7 @@ export default function AdminUsersPage() {
       } else {
         // Se existir, atualizar o status com o novo estado
         const { error } = await supabase
-          .from("user_bots")
+          .from("client_user_bots")
           .update({ enabled: newEnabledState })
           .match({ user_id: userId, tenant_id: tenantId, bot_id: botId });
         updateError = error;
@@ -446,7 +448,7 @@ export default function AdminUsersPage() {
 
       // Verificar se a atualização foi bem sucedida
       const { data: verifyData, error: verifyError } = await supabase
-        .from("user_bots")
+        .from("client_user_bots")
         .select("enabled")
         .match({ user_id: userId, tenant_id: tenantId, bot_id: botId })
         .single();
@@ -511,7 +513,7 @@ export default function AdminUsersPage() {
 
       // Buscar todos os bots do usuário
       const { data: userBots, error: fetchError } = await supabase
-        .from("user_bots")
+        .from("client_user_bots")
         .select("bot_id")
         .match({ user_id: userId, tenant_id: tenantId });
 
@@ -523,7 +525,7 @@ export default function AdminUsersPage() {
       if (userBots && userBots.length > 0) {
         // Atualizar todos os bots do usuário
         const { error: updateError } = await supabase
-          .from("user_bots")
+          .from("client_user_bots")
           .update({ enabled: newEnabledState })
           .match({ user_id: userId, tenant_id: tenantId });
 
@@ -534,7 +536,7 @@ export default function AdminUsersPage() {
 
         // Verificar se a atualização foi bem sucedida
         const { data: verifyData, error: verifyError } = await supabase
-          .from("user_bots")
+          .from("client_user_bots")
           .select("enabled")
           .match({ user_id: userId, tenant_id: tenantId });
 
@@ -634,7 +636,7 @@ export default function AdminUsersPage() {
   const handleRemoveBotAccess = async (userId: string, tenantId: string, botId: string) => {
     try {
       const { error } = await supabase
-        .from("user_bots")
+        .from("client_user_bots")
         .delete()
         .match({ user_id: userId, tenant_id: tenantId, bot_id: botId });
 
@@ -653,7 +655,7 @@ export default function AdminUsersPage() {
 
     try {
       const { error } = await supabase
-        .from("user_bots")
+        .from("client_user_bots")
         .delete()
         .match({ user_id: userId, tenant_id: tenantId });
 
@@ -673,7 +675,7 @@ export default function AdminUsersPage() {
 
       // Atualizar dados do tenant_user
       const { error: updateError } = await supabase
-        .from('tenant_users')
+        .from('super_tenant_users')
         .update({
           allow_bot_access: editingUser.allow_bot_access,
           token_limit: editingUser.token_limit
@@ -689,7 +691,7 @@ export default function AdminUsersPage() {
       if (editingUser.selected_bots) {
         // Primeiro, remover todas as associações existentes
         const { error: deleteError } = await supabase
-          .from('user_bots')
+          .from('client_user_bots')
           .delete()
           .match({ 
             user_id: editingUser.user_id, 
@@ -709,7 +711,7 @@ export default function AdminUsersPage() {
           }));
 
           const { error: botError } = await supabase
-            .from('user_bots')
+            .from('client_user_bots')
             .insert(botInserts);
 
           if (botError) throw botError;
