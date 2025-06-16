@@ -97,7 +97,7 @@ export async function POST(request: Request) {
 
     // Verificar se o bot está habilitado para o tenant
     const { data: tenantBot, error: tenantBotError } = await supabase
-      .from('tenant_bots')
+      .from('super_tenant_bots')
       .select('enabled')
       .match({
         tenant_id: tenantId,
@@ -125,7 +125,7 @@ export async function POST(request: Request) {
 
     // Verificar se o usuário tem acesso ao bot através da tabela user_bots
     const { data: userBot, error: userBotError } = await supabase
-      .from('user_bots')
+      .from('client_user_bots')
       .select('enabled')
       .match({ 
         user_id: session.user.id, 
@@ -154,7 +154,7 @@ export async function POST(request: Request) {
 
     // Verificar se o usuário tem permissão para acessar bots no tenant
     const { data: tenantUser, error: tenantUserError } = await supabase
-      .from('tenant_users')
+      .from('super_tenant_users')
       .select('allow_bot_access')
       .match({ 
         user_id: session.user.id, 
