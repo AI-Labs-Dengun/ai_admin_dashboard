@@ -84,6 +84,21 @@ export async function createUser(newUser: NewUser) {
         .insert(botInserts);
 
       if (botError) throw botError;
+
+      // Criar autorizações na tabela super_tenant_user_bots
+      const authInserts = newUser.selected_bots.map(botId => ({
+        user_id: userId,
+        tenant_id: newUser.tenant_id,
+        bot_id: botId,
+        is_authorized: newUser.allow_bot_access,
+        created_at: new Date().toISOString()
+      }));
+
+      const { error: authError } = await supabase
+        .from('super_tenant_user_bots')
+        .insert(authInserts);
+
+      if (authError) throw authError;
     }
 
     return { id: userId };

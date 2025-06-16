@@ -569,6 +569,17 @@ export default function AdminUsersPage() {
 
         if (deleteError) throw deleteError;
 
+        // Remover autorizações existentes
+        const { error: deleteAuthError } = await supabase
+          .from('super_tenant_user_bots')
+          .delete()
+          .match({ 
+            user_id: editingUser.user_id, 
+            tenant_id: editingUser.tenant_id 
+          });
+
+        if (deleteAuthError) throw deleteAuthError;
+
         // Depois, criar novas associações para os bots selecionados
         if (editingUser.selected_bots.length > 0) {
           const botInserts = editingUser.selected_bots.map(botId => ({
@@ -584,6 +595,21 @@ export default function AdminUsersPage() {
             .insert(botInserts);
 
           if (botError) throw botError;
+
+          // Criar novas autorizações
+          const authInserts = editingUser.selected_bots.map(botId => ({
+            user_id: editingUser.user_id,
+            tenant_id: editingUser.tenant_id,
+            bot_id: botId,
+            is_authorized: editingUser.allow_bot_access,
+            created_at: new Date().toISOString()
+          }));
+
+          const { error: authError } = await supabase
+            .from('super_tenant_user_bots')
+            .insert(authInserts);
+
+          if (authError) throw authError;
         }
       }
 
