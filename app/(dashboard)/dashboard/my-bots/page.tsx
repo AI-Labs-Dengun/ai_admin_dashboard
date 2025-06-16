@@ -34,22 +34,38 @@ interface UserBot {
   bot_id: string;
   enabled: boolean;
   created_at: string;
-  admin_name: string;
-  admin_email: string;
   bot_name: string;
   bot_description: string;
-  allow_bot_access: boolean;
-  token_limit: number;
-  name: string;
-  description: string | null;
   bot_capabilities: string[];
   contact_email: string | null;
   bot_website: string | null;
   max_tokens_per_request: number;
+  interactions: number;
+  available_interactions: number;
+  tokens_used: number;
+  total_tokens: number;
+  last_used: string | null;
+  status: string;
+  error_count: number;
+  last_error_message: string | null;
+  last_error_at: string | null;
+  allow_bot_access: boolean;
+  name: string;
+  description: string;
+  token_limit: number;
+  admin_name: string;
+  admin_email: string;
   bots?: {
     website: string | null;
   };
-  current_interactions?: number;
+}
+
+interface TenantAdmin {
+  tenant_id: string;
+  user: {
+    email: string;
+    full_name: string;
+  };
 }
 
 interface BotDetails {
@@ -172,26 +188,140 @@ export default function MyBotsPage() {
 
   const fetchUserBots = async (userId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('user_bots_details')
+      console.log('🔍 Buscando bots do usuário:', userId);
+      
+      // Primeiro, verificar se o usuário tem permissão no tenant
+      const { data: tenantUsers, error: tenantUserError } = await supabase
+        .from('super_tenant_users')
+        .select('tenant_id, allow_bot_access, interactions_limit')
+        .eq('user_id', userId)
+        .eq('is_active', true);
+
+      if (tenantUserError) {
+        console.error('❌ Erro ao verificar permissões do tenant:', tenantUserError);
+        if (tenantUserError.code === '406') {
+          console.error('❌ Erro de permissão: Usuário não tem acesso à tabela super_tenant_users');
+          toast.error('Erro de permissão ao acessar dados do tenant');
+        } else {
+          toast.error('Erro ao verificar permissões');
+        }
+        return;
+      }
+
+      console.log('📋 Registros de tenant encontrados:', tenantUsers);
+
+      if (!tenantUsers || tenantUsers.length === 0) {
+        console.error('❌ Usuário não encontrado em nenhum tenant');
+        toast.error('Usuário não encontrado em nenhum tenant');
+        return;
+      }
+
+      // Filtrar tenants onde o usuário tem permissão de acesso
+      const authorizedTenants = tenantUsers.filter(tu => tu.allow_bot_access);
+      
+      if (authorizedTenants.length === 0) {
+        console.error('❌ Usuário não tem permissão para acessar bots em nenhum tenant');
+        toast.error('Você não tem permissão para acessar bots');
+        return;
+      }
+
+      console.log('✅ Tenants autorizados:', authorizedTenants);
+
+      // Buscar todos os registros de uso de bots do usuário
+      const { data: botUsages, error: botUsagesError } = await supabase
+        .from('client_bot_usage')
         .select(`
           *,
-          bots:bot_id (
-            website
+          bot:bot_id (
+            name,
+            description,
+            bot_capabilities,
+            contact_email,
+            website,
+            max_tokens_per_request
           )
         `)
         .eq('user_id', userId)
-        .eq('enabled', true)
-        .eq('allow_bot_access', true)
-        .order('created_at', { ascending: false });
+        .in('tenant_id', authorizedTenants.map(tu => tu.tenant_id))
+        .eq('enabled', true);
 
-      if (error) throw error;
-      setUserBots(data || []);
+      if (botUsagesError) {
+        console.error('❌ Erro ao buscar uso dos bots:', botUsagesError);
+        toast.error('Erro ao buscar uso dos bots');
+        return;
+      }
+
+      if (!botUsages || botUsages.length === 0) {
+        console.log('ℹ️ Nenhum bot encontrado para o usuário');
+        setUserBots([]);
+        setLoading(false);
+        return;
+      }
+
+      console.log('✅ Uso dos bots encontrado:', botUsages);
+
+      // Mapear os dados para o formato esperado
+      const formattedBots = botUsages.map(usage => ({
+        id: usage.id,
+        user_id: usage.user_id,
+        tenant_id: usage.tenant_id,
+        bot_id: usage.bot_id,
+        enabled: usage.enabled,
+        created_at: usage.created_at,
+        bot_name: usage.bot_name,
+        bot_description: usage.bot?.description || '',
+        bot_capabilities: usage.bot?.bot_capabilities || [],
+        contact_email: usage.bot?.contact_email,
+        bot_website: usage.bot?.website,
+        max_tokens_per_request: usage.bot?.max_tokens_per_request || 1000,
+        interactions: usage.interactions || 0,
+        available_interactions: usage.available_interactions || 0,
+        tokens_used: usage.tokens_used || 0,
+        total_tokens: usage.total_tokens || 0,
+        last_used: usage.last_used,
+        status: usage.status,
+        error_count: usage.error_count || 0,
+        last_error_message: usage.last_error_message,
+        last_error_at: usage.last_error_at,
+        allow_bot_access: true, // Já filtramos por tenants autorizados
+        name: usage.bot_name,
+        description: usage.bot?.description || '',
+        token_limit: usage.available_interactions || 0,
+        admin_name: '', // Será preenchido depois
+        admin_email: '' // Será preenchido depois
+      }));
+
+      // Buscar informações dos admins dos tenants
+      const { data: tenantAdmins, error: tenantAdminsError } = await supabase
+        .from('super_tenant_users')
+        .select(`
+          tenant_id,
+          user:user_id (
+            email,
+            full_name
+          )
+        `)
+        .in('tenant_id', authorizedTenants.map(tu => tu.tenant_id))
+        .eq('role', 'admin');
+
+      if (!tenantAdminsError && tenantAdmins) {
+        // Mapear informações dos admins para os bots
+        formattedBots.forEach(bot => {
+          const admin = tenantAdmins.find(ta => ta.tenant_id === bot.tenant_id);
+          if (admin?.user && typeof admin.user === 'object' && !Array.isArray(admin.user)) {
+            bot.admin_name = (admin.user as { full_name: string }).full_name || '';
+            bot.admin_email = (admin.user as { email: string }).email || '';
+          }
+        });
+      }
+
+      console.log('✅ Bots formatados:', formattedBots);
+      setUserBots(formattedBots);
       
       // Buscar uso de tokens após carregar os bots
       await fetchTokenUsage(userId);
     } catch (error) {
-      console.error('Erro ao carregar bots:', error);
+      console.error('❌ Erro ao carregar bots:', error);
       toast.error('Erro ao carregar bots');
     } finally {
       setLoading(false);
@@ -233,123 +363,32 @@ export default function MyBotsPage() {
         return;
       }
 
-      console.log('👤 Usuário autenticado:', session.user.id);
-
-      // Primeiro, verificar se o bot existe em user_bots_details
-      console.log('🔍 Verificando bot em user_bots_details:', { botId, tenantId });
-      const { data: userBotDetails, error: userBotDetailsError } = await supabase
-        .from('user_bots_details')
-        .select('*')
-        .eq('bot_id', botId)
-        .eq('tenant_id', tenantId)
-        .maybeSingle();
-
-      if (userBotDetailsError) {
-        console.error('❌ Erro ao verificar user_bots_details:', userBotDetailsError);
-        toast.error('Erro ao verificar detalhes do bot');
-        return;
-      }
-
-      if (!userBotDetails) {
-        console.error('❌ Bot não encontrado em user_bots_details:', { botId, tenantId });
-        toast.error('Bot não encontrado');
-        return;
-      }
-
-      console.log('✅ Bot encontrado em user_bots_details:', userBotDetails);
-
-      // Verificar se o bot está habilitado para o tenant
-      console.log('🔍 Verificando status do bot no tenant:', { botId, tenantId });
-      const { data: tenantBot, error: tenantBotError } = await supabase
-        .from('super_tenant_bots')
-        .select('enabled')
-        .match({
-          tenant_id: tenantId,
-          bot_id: botId
-        })
-        .maybeSingle();
-
-      if (tenantBotError) {
-        console.error('❌ Erro ao verificar bot no tenant:', tenantBotError);
-        toast.error('Erro ao verificar bot no tenant');
-        return;
-      }
-
-      if (!tenantBot?.enabled) {
-        console.error('❌ Bot não está habilitado para o tenant:', { botId, tenantId });
-        toast.error('Bot não está habilitado para este tenant');
-        return;
-      }
-
-      console.log('✅ Bot habilitado para o tenant');
-
-      // Verificar se o bot está habilitado para o usuário
-      console.log('🔍 Verificando acesso do usuário ao bot:', { 
-        userId: session.user.id, 
-        botId, 
-        tenantId 
-      });
-      const { data: userBot, error: userBotError } = await supabase
+      // Verificar se o usuário tem permissão de acesso ao bot e interações disponíveis
+      const { data: usage, error: usageError } = await supabase
         .from('client_bot_usage')
-        .select('enabled')
-        .match({
-          user_id: session.user.id,
-          tenant_id: tenantId,
-          bot_id: botId
-        })
+        .select('enabled, interactions, available_interactions')
+        .eq('user_id', session.user.id)
+        .eq('tenant_id', tenantId)
+        .eq('bot_id', botId)
         .maybeSingle();
 
-      if (userBotError) {
-        console.error('❌ Erro ao verificar acesso ao bot:', userBotError);
-        toast.error('Erro ao verificar acesso ao bot');
+      if (usageError) {
+        console.error('❌ Erro ao buscar permissão de acesso ao bot:', usageError);
+        toast.error('Erro ao verificar permissão de acesso ao bot');
         return;
       }
 
-      if (!userBot?.enabled) {
-        console.error('❌ Bot não está habilitado para o usuário:', { 
-          userId: session.user.id, 
-          botId, 
-          tenantId 
-        });
-        toast.error('Bot não está habilitado para seu usuário');
+      if (!usage || !usage.enabled) {
+        toast.error('Você não tem autorização para acessar este bot.');
         return;
       }
 
-      console.log('✅ Acesso ao bot validado');
-
-      // Verificar se o usuário tem permissão para acessar bots no tenant
-      console.log('🔍 Verificando permissões do usuário no tenant:', { 
-        userId: session.user.id, 
-        tenantId 
-      });
-      const { data: tenantUser, error: tenantUserError } = await supabase
-        .from('super_tenant_users')
-        .select('allow_bot_access')
-        .match({
-          user_id: session.user.id,
-          tenant_id: tenantId
-        })
-        .single();
-
-      if (tenantUserError) {
-        console.error('❌ Erro ao verificar permissões do usuário:', tenantUserError);
-        toast.error('Erro ao verificar permissões');
+      if ((usage.interactions || 0) >= (usage.available_interactions || 0)) {
+        toast.error('Você atingiu o limite de interações para este bot.');
         return;
       }
-
-      if (!tenantUser?.allow_bot_access) {
-        console.error('❌ Usuário não tem permissão para acessar bots:', { 
-          userId: session.user.id, 
-          tenantId 
-        });
-        toast.error('Você não tem permissão para acessar bots');
-        return;
-      }
-
-      console.log('✅ Permissões validadas');
 
       // Gerar token de acesso
-      console.log('🔑 Gerando token de acesso:', { botId, tenantId });
       const response = await fetch('/api/bots/client/generate-token', {
         method: 'POST',
         headers: {
@@ -372,11 +411,8 @@ export default function MyBotsPage() {
         return;
       }
 
-      console.log('✅ Token gerado com sucesso');
-
       // Redirecionar para a rota do proxy
       const proxyUrl = `/proxy/${botId}?token=${data.token}`;
-      console.log('🔄 Redirecionando para:', proxyUrl);
       router.push(proxyUrl);
     } catch (error) {
       console.error('❌ Erro ao acessar bot:', error);
