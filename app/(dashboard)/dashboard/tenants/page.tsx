@@ -192,6 +192,13 @@ export default function TenantsPage() {
   const handleCreateOrUpdateTenant = async () => {
     setIsCreating(true);
     try {
+      // Validar se há bots selecionados
+      if (newTenant.selectedBots.length === 0) {
+        toast.error("É necessário selecionar pelo menos um bot para criar o tenant");
+        setIsCreating(false);
+        return;
+      }
+
       if (editingTenant) {
         // Atualizar tenant existente
         const { error: tenantError } = await supabase
@@ -390,8 +397,16 @@ export default function TenantsPage() {
                       })}
                     </div>
                   )}
+                  {newTenant.selectedBots.length === 0 && (
+                    <div className="text-sm text-yellow-600 mt-2">
+                      É necessário selecionar pelo menos um bot para criar o tenant
+                    </div>
+                  )}
                 </div>
-                <Button onClick={handleCreateOrUpdateTenant} disabled={isCreating}>
+                <Button 
+                  onClick={handleCreateOrUpdateTenant} 
+                  disabled={isCreating || newTenant.selectedBots.length === 0}
+                >
                   {isCreating ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
