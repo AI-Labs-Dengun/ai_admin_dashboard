@@ -76,7 +76,7 @@ export function EditBotModal({ isOpen, onClose, bot, onSuccess }: EditBotModalPr
     setIsLoading(true);
     try {
       const { error } = await supabase
-        .from("bots")
+        .from("super_bots")
         .update({
           name: data.name,
           description: data.description || null,
@@ -84,6 +84,7 @@ export function EditBotModal({ isOpen, onClose, bot, onSuccess }: EditBotModalPr
           website: data.website || null,
           max_tokens_per_request: data.max_tokens_per_request,
           bot_capabilities: data.bot_capabilities,
+          updated_at: new Date().toISOString()
         })
         .eq("id", bot.id);
 
