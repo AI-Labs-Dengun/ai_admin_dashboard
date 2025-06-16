@@ -84,3 +84,5 @@ app/auth/layout.tsx
 app/proxy/layout.tsx
 
 admin2.0-docs/
+
+package-lock.json
