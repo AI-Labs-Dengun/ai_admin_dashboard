@@ -39,25 +39,53 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
       if (!user) return;
 
       try {
-        // Buscar o estado atual dos bots do usuário na base de dados
+        // Buscar dados atualizados do usuário
+        const { data: userData, error: userError } = await supabase
+          .from('super_tenant_users')
+          .select(`
+            *,
+            profiles (
+              email,
+              full_name,
+              company
+            )
+          `)
+          .match({ 
+            user_id: user.user_id, 
+            tenant_id: user.tenant_id 
+          })
+          .single();
+
+        if (userError) throw userError;
+
+        // Buscar bots do tenant
+        const { data: tenantBots, error: tenantBotsError } = await supabase
+          .from('super_tenant_bots')
+          .select(`
+            bot_id,
+            enabled,
+            super_bots!inner (
+              id,
+              name,
+              description,
+              bot_capabilities,
+              max_tokens_per_request
+            )
+          `)
+          .eq('tenant_id', user.tenant_id);
+
+        if (tenantBotsError) throw tenantBotsError;
+
+        // Buscar bots do usuário
         const { data: userBots, error: userBotsError } = await supabase
-          .from("user_bots")
-          .select("bot_id, enabled")
+          .from('client_user_bots')
+          .select('bot_id, enabled')
           .match({ 
             user_id: user.user_id, 
             tenant_id: user.tenant_id 
           });
 
         if (userBotsError) throw userBotsError;
-
-        // Buscar informações do perfil do usuário
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("full_name, email, company")
-          .eq("id", user.user_id)
-          .single();
-
-        if (profileError) throw profileError;
 
         // Criar um mapa do estado atual dos bots
         const botStateMap = new Map(
@@ -69,9 +97,9 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
           ...user,
           profiles: {
             ...user.profiles,
-            full_name: profile.full_name,
-            email: profile.email,
-            company: profile.company
+            full_name: userData.profiles.full_name,
+            email: userData.profiles.email,
+            company: userData.profiles.company
           },
           bots: user.bots?.map(bot => ({
             ...bot,
@@ -180,7 +208,7 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
 
       // Verificar se o usuário existe no tenant
       const { data: tenantUser, error: checkError } = await supabase
-        .from('tenant_users')
+        .from('super_tenant_users')
         .select('*')
         .match({ 
           user_id: editingUser.user_id, 
@@ -195,7 +223,7 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
 
       // Verificar se há bots habilitados
       const { data: userBots, error: botError } = await supabase
-        .from('user_bots')
+        .from('client_user_bots')
         .select('bot_id, enabled')
         .match({ 
           user_id: editingUser.user_id, 
@@ -251,10 +279,10 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
       // 1. Atualizar dados do usuário no tenant_users
       console.log('1. Atualizando dados do usuário...');
       const { error: updateError } = await supabase
-        .from('tenant_users')
-        .update({ 
-          token_limit: parseInt(tokenLimit) || 0,
-          allow_bot_access: editingUser.allow_bot_access 
+        .from('super_tenant_users')
+        .update({
+          allow_bot_access: editingUser.allow_bot_access,
+          token_limit: editingUser.token_limit
         })
         .match({ 
           user_id: editingUser.user_id, 
@@ -268,45 +296,32 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
 
       // 2. Atualizar permissões dos bots
       console.log('2. Atualizando permissões dos bots...');
-      for (const bot of (editingUser.bots || [])) {
-        const { data: existingBot, error: checkError } = await supabase
-          .from("user_bots")
-          .select("*")
-          .match({ 
-            user_id: editingUser.user_id, 
-            tenant_id: editingUser.tenant_id, 
-            bot_id: bot.id 
-          })
-          .single();
+      // Primeiro, remover todas as associações existentes
+      const { error: deleteError } = await supabase
+        .from('client_user_bots')
+        .delete()
+        .match({ 
+          user_id: editingUser.user_id, 
+          tenant_id: editingUser.tenant_id 
+        });
 
-        if (checkError && checkError.code !== 'PGRST116') {
-          throw checkError;
-        }
+      if (deleteError) throw deleteError;
 
-        if (!existingBot) {
-          const { error: insertError } = await supabase
-            .from("user_bots")
-            .insert([{
-              user_id: editingUser.user_id,
-              tenant_id: editingUser.tenant_id,
-              bot_id: bot.id,
-              enabled: bot.enabled,
-              created_at: new Date().toISOString()
-            }]);
+      // Depois, criar novas associações para os bots selecionados
+      if (editingUser.selected_bots.length > 0) {
+        const botInserts = editingUser.selected_bots.map(botId => ({
+          user_id: editingUser.user_id,
+          tenant_id: editingUser.tenant_id,
+          bot_id: botId,
+          enabled: editingUser.allow_bot_access,
+          created_at: new Date().toISOString()
+        }));
 
-          if (insertError) throw insertError;
-        } else {
-          const { error: updateError } = await supabase
-            .from("user_bots")
-            .update({ enabled: bot.enabled })
-            .match({ 
-              user_id: editingUser.user_id, 
-              tenant_id: editingUser.tenant_id,
-              bot_id: bot.id 
-            });
+        const { error: botError } = await supabase
+          .from('client_user_bots')
+          .insert(botInserts);
 
-          if (updateError) throw updateError;
-        }
+        if (botError) throw botError;
       }
 
       // 3. Resetar tokens (se selecionado)
@@ -357,20 +372,20 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
     if (!editingUser || !showDeleteConfirm) return;
 
     try {
-      // Primeiro, remover todas as associações com bots do tenant
-      const { error: userBotsError } = await supabase
-        .from('user_bots')
+      // Remover todas as associações de bots
+      const { error: botError } = await supabase
+        .from('client_user_bots')
         .delete()
         .match({ 
           user_id: editingUser.user_id, 
           tenant_id: editingUser.tenant_id 
         });
 
-      if (userBotsError) throw userBotsError;
+      if (botError) throw botError;
 
       // Remover o uso de tokens associado ao usuário no tenant
       const { error: tokenUsageError } = await supabase
-        .from('token_usage')
+        .from('client_token_usage')
         .delete()
         .match({ 
           user_id: editingUser.user_id, 
@@ -380,15 +395,15 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
       if (tokenUsageError) throw tokenUsageError;
 
       // Por fim, remover o usuário do tenant
-      const { error: tenantUserError } = await supabase
-        .from('tenant_users')
+      const { error: deleteError } = await supabase
+        .from('super_tenant_users')
         .delete()
         .match({ 
           user_id: editingUser.user_id, 
           tenant_id: editingUser.tenant_id 
         });
 
-      if (tenantUserError) throw tenantUserError;
+      if (deleteError) throw deleteError;
 
       toast.success("Usuário removido do tenant com sucesso!");
       await onSave();

@@ -35,18 +35,29 @@ export function SearchUserModal({ isOpen, onClose, onSelectUser, shouldRefresh =
   const loadInitialUsers = async () => {
     setIsLoading(true);
     try {
-      // Buscar usuários não super_admin
+      // Buscar usuários
       const { data: usersData, error: usersError } = await supabase
         .from('profiles')
-        .select('*')
-        .eq('is_super_admin', false)
-        .order('full_name', { ascending: true });
+        .select(`
+          id,
+          email,
+          full_name,
+          company,
+          is_super_admin,
+          super_tenant_users (
+            tenant_id,
+            role,
+            allow_bot_access,
+            token_limit
+          )
+        `)
+        .order('full_name');
 
       if (usersError) throw usersError;
 
       // Buscar usuários que já são admins
       const { data: existingAdminsData, error: adminsError } = await supabase
-        .from('tenant_users')
+        .from('super_tenant_users')
         .select('user_id');
 
       if (adminsError) throw adminsError;
@@ -77,16 +88,28 @@ export function SearchUserModal({ isOpen, onClose, onSelectUser, shouldRefresh =
 
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
+      // Buscar usuários com filtros
+      const { data: usersData, error } = await supabase
         .from('profiles')
-        .select('*')
-        .or(`full_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,company.ilike.%${searchTerm.toLowerCase()}%`)
-        .eq('is_super_admin', false)
-        .order('full_name', { ascending: true });
+        .select(`
+          id,
+          email,
+          full_name,
+          company,
+          is_super_admin,
+          super_tenant_users (
+            tenant_id,
+            role,
+            allow_bot_access,
+            token_limit
+          )
+        `)
+        .ilike('full_name', `%${searchTerm}%`)
+        .order('full_name');
 
       if (error) throw error;
 
-      setUsers(data || []);
+      setUsers(usersData || []);
     } catch (error) {
       console.error('Erro ao buscar usuários:', error);
       toast.error('Erro ao buscar usuários');
