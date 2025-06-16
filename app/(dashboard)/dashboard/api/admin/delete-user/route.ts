@@ -34,7 +34,7 @@ export async function POST(request: Request) {
 
     // 2. Remover uso de tokens
     const { error: tokenUsageError } = await supabaseAdmin
-      .from('client_token_usage')
+      .from('client_bot_usage')
       .delete()
       .eq('user_id', userId);
 
