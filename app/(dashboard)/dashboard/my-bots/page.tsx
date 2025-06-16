@@ -55,9 +55,7 @@ interface UserBot {
   token_limit: number;
   admin_name: string;
   admin_email: string;
-  bots?: {
-    website: string | null;
-  };
+  website: string | null;
 }
 
 interface TenantAdmin {
@@ -260,6 +258,22 @@ export default function MyBotsPage() {
 
       console.log('✅ Uso dos bots encontrado:', botUsages);
 
+      // Atualizar a URL do bot na tabela client_bot_usage se necessário
+      for (const usage of botUsages) {
+        if (usage.bot?.website && !usage.website) {
+          const { error: updateError } = await supabase
+            .from('client_bot_usage')
+            .update({ website: usage.bot.website })
+            .eq('id', usage.id);
+
+          if (updateError) {
+            console.error('❌ Erro ao atualizar URL do bot:', updateError);
+          } else {
+            console.log('✅ URL do bot atualizada:', usage.bot.website);
+          }
+        }
+      }
+
       // Mapear os dados para o formato esperado
       const formattedBots = botUsages.map(usage => ({
         id: usage.id,
@@ -272,7 +286,7 @@ export default function MyBotsPage() {
         bot_description: usage.bot?.description || '',
         bot_capabilities: usage.bot?.bot_capabilities || [],
         contact_email: usage.bot?.contact_email,
-        bot_website: usage.bot?.website,
+        bot_website: usage.website || usage.bot?.website,
         max_tokens_per_request: usage.bot?.max_tokens_per_request || 1000,
         interactions: usage.interactions || 0,
         available_interactions: usage.available_interactions || 0,
@@ -288,7 +302,8 @@ export default function MyBotsPage() {
         description: usage.bot?.description || '',
         token_limit: usage.available_interactions || 0,
         admin_name: '', // Será preenchido depois
-        admin_email: '' // Será preenchido depois
+        admin_email: '', // Será preenchido depois
+        website: usage.website || usage.bot?.website || null
       }));
 
       // Buscar informações dos admins dos tenants
@@ -366,11 +381,18 @@ export default function MyBotsPage() {
       // Verificar se o usuário tem permissão de acesso ao bot e interações disponíveis
       const { data: usage, error: usageError } = await supabase
         .from('client_bot_usage')
-        .select('enabled, interactions, available_interactions')
+        .select(`
+          enabled, 
+          interactions, 
+          available_interactions,
+          website
+        `)
         .eq('user_id', session.user.id)
         .eq('tenant_id', tenantId)
         .eq('bot_id', botId)
         .maybeSingle();
+
+      console.log('🔍 Dados de uso do bot:', usage);
 
       if (usageError) {
         console.error('❌ Erro ao buscar permissão de acesso ao bot:', usageError);
@@ -388,32 +410,13 @@ export default function MyBotsPage() {
         return;
       }
 
-      // Gerar token de acesso
-      const response = await fetch('/api/bots/client/generate-token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          botId,
-          tenantId
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        console.error('❌ Erro ao gerar token:', { 
-          status: response.status, 
-          error: data.error 
-        });
-        toast.error(data.error || 'Erro ao gerar token de acesso');
+      if (!usage.website) {
+        toast.error('URL do bot não configurada.');
         return;
       }
 
-      // Redirecionar para a rota do proxy
-      const proxyUrl = `/proxy/${botId}?token=${data.token}`;
-      router.push(proxyUrl);
+      // Redirecionar para a URL do bot
+      window.location.href = usage.website;
     } catch (error) {
       console.error('❌ Erro ao acessar bot:', error);
       toast.error('Erro ao acessar bot');
@@ -478,7 +481,7 @@ export default function MyBotsPage() {
       description: bot.bot_description,
       bot_capabilities: bot.bot_capabilities || [],
       contact_email: bot.admin_email,
-      website: bot.bot_website || bot.bots?.website || null,
+      website: bot.bot_website || bot.bot?.website || null,
       max_tokens_per_request: bot.token_limit,
       created_at: bot.created_at
     });
