@@ -256,6 +256,22 @@ export default function AdminUsersPage() {
         return;
       }
 
+      // Verificar se o tenant tem bots associados
+      const { data: tenantBots, error: tenantBotsError } = await supabase
+        .from('super_tenant_bots')
+        .select('*')
+        .eq('tenant_id', newUser.tenant_id)
+        .eq('enabled', true);
+
+      if (tenantBotsError) {
+        throw tenantBotsError;
+      }
+
+      if (!tenantBots || tenantBots.length === 0) {
+        toast.error('Não é possível associar um admin a um tenant sem bots. Por favor, adicione bots ao tenant primeiro.');
+        return;
+      }
+
       toast.loading('Criando usuário...', { id: 'create-user' });
 
       // Criar associação com o tenant
@@ -296,33 +312,43 @@ export default function AdminUsersPage() {
       let tenantUserCreated = false;
       let retryCount = 0;
       const maxRetries = 5;
+      const retryDelay = 3000; // Aumentado para 3 segundos
       
       while (!tenantUserCreated && retryCount < maxRetries) {
-        const { data: verifyUser, error: verifyError } = await supabase
-          .from('super_tenant_users')
-          .select('*')
-          .match({ 
-            user_id: userId, 
-            tenant_id: newUser.tenant_id 
-          })
-          .single();
-      
-        if (!verifyError && verifyUser) {
-          tenantUserCreated = true;
-          console.log('Usuário verificado no tenant após', retryCount + 1, 'tentativas');
-        } else {
+        try {
+          const { data: verifyUser, error: verifyError } = await supabase
+            .from('super_tenant_users')
+            .select('*')
+            .match({ 
+              user_id: userId, 
+              tenant_id: newUser.tenant_id 
+            })
+            .single();
+        
+          if (!verifyError && verifyUser) {
+            tenantUserCreated = true;
+            console.log('Usuário verificado no tenant após', retryCount + 1, 'tentativas');
+          } else {
+            retryCount++;
+            console.log('Tentativa', retryCount, 'de verificar usuário no tenant falhou:', verifyError);
+            
+            if (retryCount < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, retryDelay));
+            }
+          }
+        } catch (error) {
+          console.error('Erro durante verificação do usuário:', error);
           retryCount++;
-          console.log('Tentativa', retryCount, 'de verificar usuário no tenant falhou');
-          
           if (retryCount < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
           }
         }
       }
       
       if (!tenantUserCreated) {
         console.warn('Não foi possível verificar o usuário no tenant após várias tentativas');
-        toast.error('Usuário criado, mas pode haver atraso na propagação dos dados');
+        // Em vez de mostrar erro, vamos mostrar um aviso e continuar
+        toast.warning('Usuário criado, mas pode haver atraso na propagação dos dados. Por favor, verifique em alguns instantes.');
       }
 
       // Gerar token inicial se o usuário tiver acesso a bots
@@ -878,93 +904,106 @@ export default function AdminUsersPage() {
                   </div>
                 </div>
 
-                <Card className="mt-4">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-lg">Gerenciamento de Bots</CardTitle>
-                    <CardDescription>
-                      Selecione quais bots este admin terá acesso
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          id="bot-access"
-                          checked={newUser.allow_bot_access}
-                          onCheckedChange={(checked) => setNewUser({ 
-                            ...newUser, 
-                            allow_bot_access: checked,
-                            selected_bots: checked ? tenantBots.map(bot => bot.id) : []
-                          })}
-                        />
-                        <Label htmlFor="bot-access">Permitir acesso aos bots</Label>
-                      </div>
-                      {newUser.allow_bot_access && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            const allSelected = newUser.selected_bots?.length === tenantBots.length;
-                            setNewUser({
-                              ...newUser,
-                              selected_bots: allSelected ? [] : tenantBots.map(bot => bot.id)
-                            });
-                          }}
-                        >
-                          {newUser.selected_bots?.length === tenantBots.length 
-                            ? "Desselecionar Todos" 
-                            : "Selecionar Todos"}
-                        </Button>
-                      )}
-                    </div>
-
-                    <ScrollArea className="h-[300px] rounded-md border p-4">
-                      <div className="grid gap-3">
-                        {tenantBots.map((bot) => (
-                          <div 
-                            key={bot.id} 
-                            className="flex items-center justify-between p-3 rounded-lg border bg-card"
+                {tenantBots.length === 0 ? (
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p className="text-sm text-yellow-800">
+                      Este tenant não possui bots disponíveis. Por favor, adicione bots ao tenant antes de criar um novo admin.
+                    </p>
+                  </div>
+                ) : (
+                  <Card className="mt-4">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-lg">Gerenciamento de Bots</CardTitle>
+                      <CardDescription>
+                        Selecione quais bots este admin terá acesso
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center space-x-2">
+                          <Switch
+                            id="bot-access"
+                            checked={newUser.allow_bot_access}
+                            onCheckedChange={(checked) => setNewUser({ 
+                              ...newUser, 
+                              allow_bot_access: checked,
+                              selected_bots: checked ? tenantBots.map(bot => bot.id) : []
+                            })}
+                          />
+                          <Label htmlFor="bot-access">Permitir acesso aos bots</Label>
+                        </div>
+                        {newUser.allow_bot_access && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const allSelected = newUser.selected_bots?.length === tenantBots.length;
+                              setNewUser({
+                                ...newUser,
+                                selected_bots: allSelected ? [] : tenantBots.map(bot => bot.id)
+                              });
+                            }}
                           >
-                            <div className="flex items-center space-x-3">
-                              <Checkbox
-                                id={`bot-${bot.id}`}
-                                checked={newUser.selected_bots?.includes(bot.id)}
-                                onCheckedChange={(checked) => {
-                                  const updatedBots = checked
-                                    ? [...(newUser.selected_bots || []), bot.id]
-                                    : (newUser.selected_bots || []).filter(id => id !== bot.id);
-                                  setNewUser({ ...newUser, selected_bots: updatedBots });
-                                }}
-                                disabled={!newUser.allow_bot_access}
-                              />
-                              <div className="space-y-1">
-                                <Label 
-                                  htmlFor={`bot-${bot.id}`} 
-                                  className="text-sm font-medium"
-                                >
-                                  {bot.name}
-                                </Label>
-                                <p className="text-xs text-muted-foreground">
-                                  {bot.description || 'Sem descrição'}
-                                </p>
+                            {newUser.selected_bots?.length === tenantBots.length 
+                              ? "Desselecionar Todos" 
+                              : "Selecionar Todos"}
+                          </Button>
+                        )}
+                      </div>
+
+                      <ScrollArea className="h-[300px] rounded-md border p-4">
+                        <div className="grid gap-3">
+                          {tenantBots.map((bot) => (
+                            <div 
+                              key={bot.id} 
+                              className="flex items-center justify-between p-3 rounded-lg border bg-card"
+                            >
+                              <div className="flex items-center space-x-3">
+                                <Checkbox
+                                  id={`bot-${bot.id}`}
+                                  checked={newUser.selected_bots?.includes(bot.id)}
+                                  onCheckedChange={(checked) => {
+                                    const updatedBots = checked
+                                      ? [...(newUser.selected_bots || []), bot.id]
+                                      : (newUser.selected_bots || []).filter(id => id !== bot.id);
+                                    setNewUser({ ...newUser, selected_bots: updatedBots });
+                                  }}
+                                  disabled={!newUser.allow_bot_access}
+                                />
+                                <div className="space-y-1">
+                                  <Label 
+                                    htmlFor={`bot-${bot.id}`} 
+                                    className="text-sm font-medium"
+                                  >
+                                    {bot.name}
+                                  </Label>
+                                  <p className="text-xs text-muted-foreground">
+                                    {bot.description || 'Sem descrição'}
+                                  </p>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                  </CardContent>
-                </Card>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    </CardContent>
+                  </Card>
+                )}
+
+                <Button 
+                  className="w-full sm:w-auto" 
+                  onClick={handleCreateUser}
+                  disabled={
+                    !newUser.email || 
+                    !newUser.full_name || 
+                    !newUser.tenant_id || 
+                    tenantBots.length === 0
+                  }
+                >
+                  {tenantBots.length === 0 ? 'Adicione bots ao tenant primeiro' : 'Criar Usuário'}
+                </Button>
               </>
             )}
-
-            <Button 
-              className="w-full sm:w-auto" 
-              onClick={handleCreateUser}
-              disabled={!newUser.email || !newUser.full_name || !newUser.tenant_id}
-            >
-              Criar Usuário
-            </Button>
           </div>
         </CardContent>
       </Card>
