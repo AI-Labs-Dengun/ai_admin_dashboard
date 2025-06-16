@@ -41,25 +41,6 @@ export async function PATCH(
       );
     }
 
-    // Atualizar a notificação existente
-    const { error: notificationError } = await supabase
-      .from('bot_notifications')
-      .update({
-        status,
-        notification_data: {
-          ...updatedRequest,
-          type: 'bot_request',
-          status
-        }
-      })
-      .eq('bot_id', requestId)
-      .eq('status', 'pending');
-
-    if (notificationError) {
-      console.error('Erro ao atualizar notificação:', notificationError);
-      // Não retornamos erro aqui pois a solicitação já foi atualizada
-    }
-
     // Se aprovado, criar o bot e suas associações
     if (status === 'approved') {
       // Criar o bot
