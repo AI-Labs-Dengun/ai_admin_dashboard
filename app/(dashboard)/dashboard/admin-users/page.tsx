@@ -24,10 +24,21 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 interface TenantBot {
   bot_id: string;
   enabled: boolean;
-  bots: {
+  super_bots: {
     id: string;
     name: string;
-  }[];
+    description: string;
+    bot_capabilities: string[];
+    max_tokens_per_request: number;
+    is_active: boolean;
+  };
+}
+
+interface FormattedBot {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
 }
 
 export default function AdminUsersPage() {
@@ -46,7 +57,7 @@ export default function AdminUsersPage() {
 
   const [bots, setBots] = useState<Bot[]>([]);
   const [selectedTenant, setSelectedTenant] = useState<string>("");
-  const [tenantBots, setTenantBots] = useState<Bot[]>([]);
+  const [tenantBots, setTenantBots] = useState<FormattedBot[]>([]);
   const [tokenLimits, setTokenLimits] = useState<Record<string, number>>({});
 
   const [editingUser, setEditingUser] = useState<TenantUser | null>(null);
@@ -96,8 +107,18 @@ export default function AdminUsersPage() {
       const usersWithCorrectBotState = await Promise.all(
         fetchedUsers.map(async (user) => {
           const { data: userBots, error: userBotsError } = await supabase
-            .from("client_user_bots")
-            .select("bot_id, enabled")
+            .from("client_bot_usage")
+            .select(`
+              bot_id,
+              enabled,
+              super_bots!inner (
+                id,
+                name,
+                description,
+                bot_capabilities,
+                max_tokens_per_request
+              )
+            `)
             .match({ 
               user_id: user.user_id, 
               tenant_id: user.tenant_id 
@@ -146,9 +167,8 @@ export default function AdminUsersPage() {
 
   const fetchTenantBots = async (tenantId: string) => {
     try {
-      // Buscar bots associados ao tenant
-      const { data: tenantBotsData, error: tenantBotsError } = await supabase
-        .from("super_tenant_bots")
+      const { data: tenantBots, error } = await supabase
+        .from('super_tenant_bots')
         .select(`
           bot_id,
           enabled,
@@ -157,43 +177,26 @@ export default function AdminUsersPage() {
             name,
             description,
             bot_capabilities,
-            max_tokens_per_request
+            max_tokens_per_request,
+            is_active
           )
         `)
-        .eq("tenant_id", tenantId);
+        .eq('tenant_id', tenantId);
 
-      if (tenantBotsError) {
-        console.error("Erro ao carregar bots do tenant:", tenantBotsError);
-        throw tenantBotsError;
-      }
+      if (error) throw error;
 
-      // Filtrar apenas os bots que estão ativos no tenant
-      const activeTenantBots = tenantBotsData?.filter(tb => tb.enabled) || [];
-      
-      // Mapear os bots do tenant
-      const formattedBots = activeTenantBots.map(tb => ({
-        id: tb.bot_id,
-        name: tb.super_bots.name || '',
-        description: tb.super_bots.description || '',
-        enabled: true
-      }));
-
-
-      console.log('Bots do tenant:', formattedBots); // Log para debug
-
-      setTenantBots(formattedBots);
-      
-      // Se estiver criando um novo usuário, selecionar todos os bots do tenant por padrão
-      if (newUser.tenant_id === tenantId) {
-        setNewUser(prev => ({
-          ...prev,
-          allow_bot_access: true,
-          selected_bots: formattedBots.map(bot => bot.id)
+      if (tenantBots) {
+        const formattedBots = tenantBots.map(tb => ({
+          id: tb.bot_id,
+          name: tb.super_bots.name,
+          description: tb.super_bots.description,
+          enabled: tb.enabled
         }));
+        setTenantBots(formattedBots);
       }
     } catch (error) {
-      console.error("Erro ao carregar bots do tenant:", error);
-      toast.error("Erro ao carregar bots do tenant");
+      console.error('Erro ao buscar bots do tenant:', error);
+      toast.error('Erro ao buscar bots do tenant');
     }
   };
 
@@ -204,215 +207,36 @@ export default function AdminUsersPage() {
   }, [selectedTenant]);
 
   const handleCreateUser = async () => {
+    if (!newUser.email || !newUser.tenant_id) {
+      toast.error('Preencha todos os campos obrigatórios');
+      return;
+    }
+
     try {
-      // Verificar se o usuário já existe
-      const { data: existingUser, error: userError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', newUser.email)
-        .single();
-
-      if (userError && userError.code !== 'PGRST116') {
-        throw userError;
-      }
-
-      let userId = existingUser?.id;
-
-      // Se o usuário não existe, criar um novo usuário no auth
-      if (!userId) {
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-          email: newUser.email,
-          password: Math.random().toString(36).slice(-8),
-          options: {
-            data: {
-              full_name: newUser.full_name,
-              company: newUser.company,
-              is_super_admin: false
-            }
-          }
-        });
-
-        if (authError) throw authError;
-        userId = authData.user?.id;
-      }
-
-      if (!userId) {
-        throw new Error('Não foi possível obter o ID do usuário');
-      }
-
-      // Verificar se o usuário já está associado ao tenant
-      const { count, error: countError } = await supabase
-        .from('super_tenant_users')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', userId)
-        .eq('tenant_id', newUser.tenant_id);
-
-      if (countError) {
-        throw countError;
-      }
-
-      if (count && count > 0) {
-        toast.error('Este usuário já está associado a este tenant');
-        return;
-      }
-
-      // Verificar se o tenant tem bots associados
-      const { data: tenantBots, error: tenantBotsError } = await supabase
-        .from('super_tenant_bots')
-        .select('*')
-        .eq('tenant_id', newUser.tenant_id)
-        .eq('enabled', true);
-
-      if (tenantBotsError) {
-        throw tenantBotsError;
-      }
-
-      if (!tenantBots || tenantBots.length === 0) {
-        toast.error('Não é possível associar um admin a um tenant sem bots. Por favor, adicione bots ao tenant primeiro.');
-        return;
-      }
-
       toast.loading('Criando usuário...', { id: 'create-user' });
 
-      // Criar associação com o tenant
-      const { error: createError } = await supabase
-        .from('super_tenant_users')
-        .insert({
-          user_id: userId,
-          tenant_id: newUser.tenant_id,
-          role: 'admin',
-          allow_bot_access: newUser.allow_bot_access,
-          token_limit: newUser.token_limit
-        });
+      // Criar o usuário
+      const createdUser = await createUser(newUser);
 
-      if (createError) throw createError;
-
-      // Se houver bots selecionados, criar as associações
-      if (newUser.selected_bots && newUser.selected_bots.length > 0) {
-        const botInserts = newUser.selected_bots.map(botId => ({
-          user_id: userId,
-          tenant_id: newUser.tenant_id,
-          bot_id: botId,
-          enabled: newUser.allow_bot_access,
-          created_at: new Date().toISOString()
-        }));
-
-        const { error: botError } = await supabase
-          .from('client_user_bots')
-          .insert(botInserts);
-
-        if (botError) throw botError;
+      if (!createdUser) {
+        throw new Error('Usuário não foi criado');
       }
 
-      // Aguardar um tempo mais longo para garantir que as alterações foram propagadas
-      toast.loading('Finalizando criação do usuário...', { id: 'create-user' });
-      await new Promise(resolve => setTimeout(resolve, 5000));
-
-      // Verificar repetidamente se o usuário foi criado corretamente no tenant
-      let tenantUserCreated = false;
-      let retryCount = 0;
-      const maxRetries = 5;
-      const retryDelay = 3000; // Aumentado para 3 segundos
-      
-      while (!tenantUserCreated && retryCount < maxRetries) {
-        try {
-          const { data: verifyUser, error: verifyError } = await supabase
-            .from('super_tenant_users')
-            .select('*')
-            .match({ 
-              user_id: userId, 
-              tenant_id: newUser.tenant_id 
-            })
-            .single();
-        
-          if (!verifyError && verifyUser) {
-            tenantUserCreated = true;
-            console.log('Usuário verificado no tenant após', retryCount + 1, 'tentativas');
-          } else {
-            retryCount++;
-            console.log('Tentativa', retryCount, 'de verificar usuário no tenant falhou:', verifyError);
-            
-            if (retryCount < maxRetries) {
-              await new Promise(resolve => setTimeout(resolve, retryDelay));
-            }
-          }
-        } catch (error) {
-          console.error('Erro durante verificação do usuário:', error);
-          retryCount++;
-          if (retryCount < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, retryDelay));
-          }
-        }
-      }
-      
-      if (!tenantUserCreated) {
-        console.warn('Não foi possível verificar o usuário no tenant após várias tentativas');
-        // Em vez de mostrar erro, vamos mostrar um aviso e continuar
-        toast.warning('Usuário criado, mas pode haver atraso na propagação dos dados. Por favor, verifique em alguns instantes.');
-      }
-
-      // Gerar token inicial se o usuário tiver acesso a bots
-      if (newUser.allow_bot_access) {
-        toast.loading('Gerando token inicial...', { id: 'create-user' });
-        
-        try {
-          // Aguardar um momento para garantir que o usuário foi criado corretamente
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          
-          console.log(`Gerando token para usuário ${userId} no tenant ${newUser.tenant_id}`);
-          
-          const response = await fetch('/api/bots/generate-token', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ 
-              userId, 
-              tenantId: newUser.tenant_id 
-            }),
-          });
-
-          const data = await response.json();
-          
-          if (!response.ok) {
-            throw new Error(data.error || 'Erro ao gerar token inicial');
-          }
-
-          if (data.token) {
-            // Aguardar um momento para garantir que o documento está focado
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            try {
-              await navigator.clipboard.writeText(data.token);
-              toast.success('Token inicial gerado e copiado para a área de transferência', { id: 'create-user' });
-            } catch (clipboardError) {
-              console.warn('Não foi possível copiar o token para a área de transferência:', clipboardError);
-              toast.success('Token inicial gerado com sucesso!', { id: 'create-user' });
-            }
-          } else {
-            throw new Error('Token não gerado');
-          }
-        } catch (error) {
-          console.error('Erro ao gerar token inicial:', error);
-          toast.error('Usuário criado, mas houve erro ao gerar token inicial. Tente gerar o token manualmente na página de edição.', { id: 'create-user' });
-        }
-      } else {
-        toast.success('Usuário criado com sucesso!', { id: 'create-user' });
-      }
-
+      toast.success('Usuário criado com sucesso!', { id: 'create-user' });
+      setIsEditModalOpen(false);
       setNewUser({
-        email: "",
-        full_name: "",
-        company: "",
-        tenant_id: "",
-        allow_bot_access: false,
+        email: '',
+        full_name: '',
+        company: '',
+        tenant_id: '',
         selected_bots: [],
-        token_limit: 1000000
+        token_limit: 1000000,
+        allow_bot_access: true
       });
-      fetchData();
+      await fetchData();
     } catch (error) {
-      console.error("Erro ao criar usuário:", error);
-      toast.error(`Erro ao criar usuário: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+      console.error('Erro ao criar usuário:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao criar usuário', { id: 'create-user' });
     }
   };
 
@@ -435,7 +259,7 @@ export default function AdminUsersPage() {
 
       // Primeiro, verificar se existe o registro na tabela user_bots
       const { data: existingBot, error: checkError } = await supabase
-        .from("client_user_bots")
+        .from("client_bot_usage")
         .select("*")
         .match({ user_id: userId, tenant_id: tenantId, bot_id: botId })
         .single();
@@ -449,7 +273,7 @@ export default function AdminUsersPage() {
       if (!existingBot) {
         // Se não existir, criar o registro com o novo estado
         const { error } = await supabase
-          .from("client_user_bots")
+          .from("client_bot_usage")
           .insert([{
             user_id: userId,
             tenant_id: tenantId,
@@ -461,7 +285,7 @@ export default function AdminUsersPage() {
       } else {
         // Se existir, atualizar o status com o novo estado
         const { error } = await supabase
-          .from("client_user_bots")
+          .from("client_bot_usage")
           .update({ enabled: newEnabledState })
           .match({ user_id: userId, tenant_id: tenantId, bot_id: botId });
         updateError = error;
@@ -474,7 +298,7 @@ export default function AdminUsersPage() {
 
       // Verificar se a atualização foi bem sucedida
       const { data: verifyData, error: verifyError } = await supabase
-        .from("client_user_bots")
+        .from("client_bot_usage")
         .select("enabled")
         .match({ user_id: userId, tenant_id: tenantId, bot_id: botId })
         .single();
@@ -539,7 +363,7 @@ export default function AdminUsersPage() {
 
       // Buscar todos os bots do usuário
       const { data: userBots, error: fetchError } = await supabase
-        .from("client_user_bots")
+        .from("client_bot_usage")
         .select("bot_id")
         .match({ user_id: userId, tenant_id: tenantId });
 
@@ -551,7 +375,7 @@ export default function AdminUsersPage() {
       if (userBots && userBots.length > 0) {
         // Atualizar todos os bots do usuário
         const { error: updateError } = await supabase
-          .from("client_user_bots")
+          .from("client_bot_usage")
           .update({ enabled: newEnabledState })
           .match({ user_id: userId, tenant_id: tenantId });
 
@@ -562,7 +386,7 @@ export default function AdminUsersPage() {
 
         // Verificar se a atualização foi bem sucedida
         const { data: verifyData, error: verifyError } = await supabase
-          .from("client_user_bots")
+          .from("client_bot_usage")
           .select("enabled")
           .match({ user_id: userId, tenant_id: tenantId });
 
@@ -662,7 +486,7 @@ export default function AdminUsersPage() {
   const handleRemoveBotAccess = async (userId: string, tenantId: string, botId: string) => {
     try {
       const { error } = await supabase
-        .from("client_user_bots")
+        .from("client_bot_usage")
         .delete()
         .match({ user_id: userId, tenant_id: tenantId, bot_id: botId });
 
@@ -681,7 +505,7 @@ export default function AdminUsersPage() {
 
     try {
       const { error } = await supabase
-        .from("client_user_bots")
+        .from("client_bot_usage")
         .delete()
         .match({ user_id: userId, tenant_id: tenantId });
 
@@ -717,7 +541,7 @@ export default function AdminUsersPage() {
       if (editingUser.selected_bots) {
         // Primeiro, remover todas as associações existentes
         const { error: deleteError } = await supabase
-          .from('client_user_bots')
+          .from('client_bot_usage')
           .delete()
           .match({ 
             user_id: editingUser.user_id, 
@@ -737,7 +561,7 @@ export default function AdminUsersPage() {
           }));
 
           const { error: botError } = await supabase
-            .from('client_user_bots')
+            .from('client_bot_usage')
             .insert(botInserts);
 
           if (botError) throw botError;
@@ -778,11 +602,21 @@ export default function AdminUsersPage() {
   };
 
   const handleSelectExistingUser = (user: any) => {
+    // Verificar se o usuário já é super admin
+    if (user.is_super_admin) {
+      toast.error('Não é possível selecionar um super admin');
+      return;
+    }
+
+    // Configurar o novo usuário com os dados do usuário existente
     setNewUser({
-      ...newUser,
       email: user.email,
       full_name: user.full_name,
       company: user.company,
+      tenant_id: selectedTenant?.id || '',
+      allow_bot_access: true,
+      selected_bots: tenantBots.map(bot => bot.id),
+      token_limit: 1000000
     });
   };
 
