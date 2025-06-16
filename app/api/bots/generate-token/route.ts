@@ -5,10 +5,7 @@ import { generateBotToken } from '@/app/(dashboard)/dashboard/lib/jwtManagement'
 
 export async function POST(request: Request) {
   try {
-    // Agora vamos usar a forma correta de obter cookies
-    const supabase = createRouteHandlerClient({ 
-      cookies, // Passar a função cookies diretamente
-    });
+    const supabase = createRouteHandlerClient({ cookies });
 
     // Verificar autenticação
     const { data: { session }, error: authError } = await supabase.auth.getSession();
@@ -46,22 +43,16 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { userId, tenantId, botId } = body;
 
-    console.log('Dados recebidos:', { userId, tenantId, botId });
-
     if (!userId || !tenantId) {
-      console.error('Dados inválidos:', body);
       return NextResponse.json(
         { error: 'Dados inválidos: userId e tenantId são obrigatórios' },
         { status: 400 }
       );
     }
 
-    // Adicionar delay para garantir que o usuário está corretamente criado no banco
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
     // Verificar se o usuário existe no tenant
     const { data: tenantUser, error: tenantError } = await supabase
-      .from('tenant_users')
+      .from('super_tenant_users')
       .select('*')
       .match({ user_id: userId, tenant_id: tenantId })
       .single();
@@ -81,9 +72,8 @@ export async function POST(request: Request) {
     }
 
     if (!tenantUser) {
-      console.error('Usuário não encontrado no tenant');
       return NextResponse.json(
-        { error: 'Usuário não encontrado no tenant. Aguarde alguns segundos e tente novamente.' },
+        { error: 'Usuário não encontrado no tenant' },
         { status: 404 }
       );
     }
@@ -98,7 +88,7 @@ export async function POST(request: Request) {
 
     // Verificar se existem bots habilitados
     const { data: userBots, error: botsError } = await supabase
-      .from('user_bots')
+      .from('client_bot_usage')
       .select('bot_id, enabled')
       .match({ user_id: userId, tenant_id: tenantId });
 
@@ -121,9 +111,6 @@ export async function POST(request: Request) {
     // Gerar token
     try {
       const token = await generateBotToken(userId, tenantId, botId);
-      if (!token) {
-        throw new Error('Falha ao gerar token');
-      }
       return NextResponse.json({ token });
     } catch (tokenError) {
       console.error('Erro ao gerar token:', tokenError);

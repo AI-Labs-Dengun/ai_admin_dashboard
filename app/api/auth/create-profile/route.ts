@@ -6,7 +6,13 @@ import { NextResponse } from 'next/server';
 // Criar cliente com service_role
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
 );
 
 export async function POST(request: Request) {
@@ -17,6 +23,17 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'Dados inválidos' },
         { status: 400 }
+      );
+    }
+
+    // Verificar se o usuário existe no auth
+    const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.getUserById(userId);
+    
+    if (authError || !authUser) {
+      console.error('Erro ao verificar usuário no auth:', authError);
+      return NextResponse.json(
+        { error: 'Usuário não encontrado no sistema de autenticação' },
+        { status: 404 }
       );
     }
 
@@ -43,6 +60,9 @@ export async function POST(request: Request) {
         message: 'Perfil já existe'
       });
     }
+
+    // Aguardar um momento para garantir que o usuário foi criado completamente
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
     // Criar perfil usando o service role
     const { error: profileError } = await supabaseAdmin

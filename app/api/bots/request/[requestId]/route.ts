@@ -45,7 +45,7 @@ export async function PATCH(
     if (status === 'approved') {
       // Criar o bot
       const { data: bot, error: botError } = await supabase
-        .from('bots')
+        .from('super_bots')
         .insert([
           {
             name: updatedRequest.bot_name,
@@ -53,7 +53,8 @@ export async function PATCH(
             bot_capabilities: updatedRequest.bot_capabilities,
             contact_email: updatedRequest.contact_email,
             website: updatedRequest.website,
-            max_tokens_per_request: updatedRequest.max_tokens_per_request
+            max_tokens_per_request: updatedRequest.max_tokens_per_request,
+            is_active: true
           }
         ])
         .select()
@@ -69,8 +70,9 @@ export async function PATCH(
 
       // Buscar todos os tenants ativos
       const { data: tenants, error: tenantsError } = await supabase
-        .from('tenants')
-        .select('id');
+        .from('super_tenants')
+        .select('id')
+        .eq('is_active', true);
 
       if (tenantsError) {
         console.error('Erro ao buscar tenants:', tenantsError);
@@ -86,11 +88,12 @@ export async function PATCH(
           tenant_id: tenant.id,
           bot_id: bot.id,
           enabled: true,
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         }));
 
         const { error: tenantBotError } = await supabase
-          .from('tenant_bots')
+          .from('super_tenant_bots')
           .insert(tenantBotInserts);
 
         if (tenantBotError) {
