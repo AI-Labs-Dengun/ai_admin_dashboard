@@ -37,10 +37,11 @@ export interface TokenUsage {
 export interface Bot {
   id: string;
   name: string;
-  description?: string;
-  enabled?: boolean;
+  description: string;
+  enabled: boolean;
+  max_tokens_per_request: number;
+  bot_capabilities: string[];
   token_usage?: TokenUsage;
-  isInTenant?: boolean;
 }
 
 export interface TenantUser {
@@ -49,19 +50,16 @@ export interface TenantUser {
   tenant_id: string;
   role: string;
   allow_bot_access: boolean;
-  token_limit: number;
-  user: {
+  interactions_limit: number;
+  is_active: boolean;
+  profiles?: {
     email: string;
     full_name: string;
     company: string;
   };
-  tenant: {
-    name: string;
-  };
-  bots: Bot[];
-  selected_bots?: string[];
+  bots?: Bot[];
   token_usage?: TokenUsage;
-  profiles: Profile;
+  selected_bots?: string[];
 }
 
 export interface NewUser {
@@ -71,5 +69,5 @@ export interface NewUser {
   tenant_id: string;
   allow_bot_access: boolean;
   selected_bots: string[];
-  token_limit: number;
+  interactions_limit: number;
 } 

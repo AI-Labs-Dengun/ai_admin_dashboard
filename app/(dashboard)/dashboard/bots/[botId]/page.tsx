@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { use } from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 interface BotDetails {
   id: string;
@@ -23,57 +24,79 @@ export default function BotPage({ params }: { params: Promise<{ botId: string }>
   const [botDetails, setBotDetails] = useState<BotDetails | null>(null);
   const router = useRouter();
   const { botId } = use(params);
+  const supabase = createClientComponentClient();
 
   useEffect(() => {
     const validateAccess = async () => {
       try {
         console.log('🔍 Iniciando validação de acesso ao bot:', botId);
         
-        const token = localStorage.getItem('botToken');
-        const storedBotId = localStorage.getItem('currentBotId');
-        const storedTenantId = localStorage.getItem('currentTenantId');
-
-        if (!token || !storedBotId || !storedTenantId) {
-          console.error('❌ Tokens não encontrados no localStorage');
-          toast.error('Sessão inválida');
-          router.push('/dashboard/my-bots');
+        // Verificar se o usuário está autenticado
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error('❌ Erro ao obter sessão:', sessionError);
+          toast.error('Erro de autenticação');
+          router.push('/auth/signin');
           return;
         }
 
-        console.log('🔑 Tokens encontrados, validando...');
-
-        // Validar token
-        const response = await fetch('/api/bots/validate-token', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ token }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          console.error('❌ Token inválido:', data.error);
-          toast.error('Sessão expirada ou inválida');
-          router.push('/dashboard/my-bots');
+        if (!session) {
+          console.error('❌ Nenhuma sessão encontrada');
+          toast.error('Usuário não autenticado');
+          router.push('/auth/signin');
           return;
         }
 
-        console.log('✅ Token validado com sucesso');
+        console.log('👤 Usuário autenticado:', session.user.id);
 
-        // Buscar detalhes do bot
-        const botResponse = await fetch(`/api/bots/${botId}`);
-        const botData = await botResponse.json();
+        // Buscar detalhes do bot e verificar permissões
+        const { data: botData, error: botError } = await supabase
+          .from('user_bots_details')
+          .select(`
+            *,
+            bots:bot_id (
+              id,
+              name,
+              description,
+              bot_capabilities,
+              contact_email,
+              website,
+              max_tokens_per_request
+            )
+          `)
+          .eq('bot_id', botId)
+          .eq('user_id', session.user.id)
+          .eq('enabled', true)
+          .eq('allow_bot_access', true)
+          .maybeSingle();
 
-        if (!botResponse.ok) {
-          console.error('❌ Erro ao buscar detalhes do bot:', botData.error);
+        if (botError) {
+          console.error('❌ Erro ao buscar detalhes do bot:', botError);
           toast.error('Erro ao carregar detalhes do bot');
+          router.push('/dashboard/my-bots');
+          return;
+        }
+
+        if (!botData) {
+          console.error('❌ Bot não encontrado ou sem permissão:', botId);
+          toast.error('Bot não encontrado ou sem permissão de acesso');
+          router.push('/dashboard/my-bots');
           return;
         }
 
         console.log('✅ Detalhes do bot carregados com sucesso');
-        setBotDetails(botData);
+        
+        // Formatar os detalhes do bot
+        setBotDetails({
+          id: botData.bot_id,
+          name: botData.bot_name,
+          description: botData.bot_description,
+          bot_capabilities: botData.bot_capabilities || [],
+          contact_email: botData.admin_email,
+          website: botData.bot_website || botData.bots?.website || null,
+          max_tokens_per_request: botData.token_limit
+        });
       } catch (error) {
         console.error('❌ Erro ao validar acesso:', error);
         toast.error('Erro ao validar acesso');
@@ -84,7 +107,7 @@ export default function BotPage({ params }: { params: Promise<{ botId: string }>
     };
 
     validateAccess();
-  }, [botId, router]);
+  }, [botId, router, supabase]);
 
   if (loading) {
     return (

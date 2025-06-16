@@ -48,7 +48,8 @@ export function SearchUserModal({ isOpen, onClose, onSelectUser, shouldRefresh =
             tenant_id,
             role,
             allow_bot_access,
-            token_limit
+            interactions_limit,
+            is_active
           )
         `)
         .order('full_name');
@@ -101,7 +102,8 @@ export function SearchUserModal({ isOpen, onClose, onSelectUser, shouldRefresh =
             tenant_id,
             role,
             allow_bot_access,
-            token_limit
+            interactions_limit,
+            is_active
           )
         `)
         .ilike('full_name', `%${searchTerm}%`)

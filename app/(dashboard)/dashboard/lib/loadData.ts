@@ -4,33 +4,34 @@ import toast from "react-hot-toast";
 import { checkUserPermissions } from "./authManagement";
 
 interface TenantUserResponse {
+  id: string;
   user_id: string;
   tenant_id: string;
   role: string;
   allow_bot_access: boolean;
-  token_limit: number;
+  interactions_limit: number;
+  is_active: boolean;
   profiles: {
     email: string;
     full_name: string;
+    company: string;
   };
-  tenants: {
-    tenant_bots: Array<{
-      bot_id: string;
-      enabled: boolean;
-      bots: {
-        id: string;
-        name: string;
-      };
-    }>;
+}
+
+interface BotAuthorizationResponse {
+  id: string;
+  user_id: string;
+  tenant_id: string;
+  bot_id: string;
+  is_authorized: boolean;
+  super_bots: {
+    id: string;
+    name: string;
+    description: string;
+    max_tokens_per_request: number;
+    bot_capabilities: string[];
+    is_active: boolean;
   };
-  user_bots: Array<{
-    bot_id: string;
-    enabled: boolean;
-    bots: {
-      id: string;
-      name: string;
-    };
-  }>;
 }
 
 export const loadData = async () => {
@@ -50,76 +51,127 @@ export const loadData = async () => {
       const userResponse = await supabase
         .from("super_tenant_users")
         .select(`
+          id,
           user_id,
           tenant_id,
           role,
           allow_bot_access,
-          token_limit,
-          profiles (
+          interactions_limit,
+          is_active,
+          profiles!user_id (
             email,
-            full_name
-          ),
-          client_user_bots!user_id (
-            bot_id,
-            enabled,
-            super_bots (
-              id,
-              name
-            )
+            full_name,
+            company
           )
         `)
         .eq("user_id", permissions.userId)
-        .order("created_at", { ascending: false });
+        .single();
 
       if (userResponse.error) {
         console.error("Erro ao carregar dados do usuário:", userResponse.error);
         throw userResponse.error;
       }
 
+      // Buscar autorizações de bots para o usuário
+      const botAuthResponse = await supabase
+        .from("super_tenant_user_bots")
+        .select(`
+          id,
+          user_id,
+          tenant_id,
+          bot_id,
+          is_authorized,
+          super_bots!bot_id (
+            id,
+            name,
+            description,
+            max_tokens_per_request,
+            bot_capabilities,
+            is_active
+          )
+        `)
+        .eq("user_id", permissions.userId)
+        .eq("tenant_id", userResponse.data?.tenant_id);
+
+      if (botAuthResponse.error) {
+        console.error("Erro ao carregar autorizações de bots:", botAuthResponse.error);
+        throw botAuthResponse.error;
+      }
+
+      // Buscar uso de tokens
+      const tokenUsageResponse = await supabase
+        .from("client_bot_usage")
+        .select("id, total_tokens, last_used")
+        .eq("user_id", permissions.userId)
+        .eq("tenant_id", userResponse.data?.tenant_id)
+        .order("last_used", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (tokenUsageResponse.error && tokenUsageResponse.error.code !== "PGRST116") {
+        console.error("Erro ao carregar uso de tokens:", tokenUsageResponse.error);
+        throw tokenUsageResponse.error;
+      }
+
       const tenantResponse = await supabase
         .from("super_tenants")
         .select("*")
-        .eq("id", userResponse.data?.[0]?.tenant_id)
-        .order("name");
+        .eq("id", userResponse.data?.tenant_id)
+        .single();
 
       if (tenantResponse.error) {
         console.error("Erro ao carregar dados do tenant:", tenantResponse.error);
         throw tenantResponse.error;
       }
 
-      // Buscar uso de tokens
-      const tokenUsageResponse = await supabase
-        .from("client_bot_usage")
-        .select("*")
-        .eq("user_id", permissions.userId)
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      const processedUsers: TenantUser[] = (userResponse.data as unknown as TenantUserResponse[]).map(user => ({
-        user_id: user.user_id,
-        tenant_id: user.tenant_id,
-        role: user.role,
-        allow_bot_access: user.allow_bot_access,
-        token_limit: user.token_limit,
-        profiles: user.profiles,
-        token_usage: tokenUsageResponse.data?.[0] || {
-          total_tokens: 0,
-          last_used: new Date().toISOString()
+      const processedUsers: TenantUser[] = [{
+        id: userResponse.data.id,
+        user_id: userResponse.data.user_id,
+        tenant_id: userResponse.data.tenant_id,
+        role: userResponse.data.role,
+        allow_bot_access: userResponse.data.allow_bot_access,
+        interactions_limit: userResponse.data.interactions_limit,
+        is_active: userResponse.data.is_active,
+        profiles: {
+          email: userResponse.data.profiles[0].email,
+          full_name: userResponse.data.profiles[0].full_name,
+          company: userResponse.data.profiles[0].company
+        },
+        token_usage: {
+          id: tokenUsageResponse.data?.id || '',
+          user_id: permissions.userId,
+          tenant_id: userResponse.data.tenant_id,
+          bot_id: '',
+          tokens_used: tokenUsageResponse.data?.total_tokens || 0,
+          total_tokens: tokenUsageResponse.data?.total_tokens || 0,
+          action_type: 'chat',
+          request_timestamp: tokenUsageResponse.data?.last_used || new Date().toISOString(),
+          response_timestamp: tokenUsageResponse.data?.last_used || new Date().toISOString(),
+          last_used: tokenUsageResponse.data?.last_used || new Date().toISOString(),
+          created_at: tokenUsageResponse.data?.last_used || new Date().toISOString(),
+          updated_at: tokenUsageResponse.data?.last_used || new Date().toISOString()
         } as TokenUsage,
-        bots: user.user_bots?.map(ub => ({
-          id: ub.bot_id,
-          name: ub.bots?.name || "Bot Desconhecido",
-          enabled: ub.enabled,
+        bots: (botAuthResponse.data as unknown as BotAuthorizationResponse[])?.filter(auth => 
+          auth.user_id === userResponse.data.user_id && 
+          auth.tenant_id === userResponse.data.tenant_id &&
+          auth.super_bots?.is_active
+        ).map(auth => ({
+          id: auth.bot_id,
+          name: auth.super_bots?.name || "Bot Desconhecido",
+          description: auth.super_bots?.description || "",
+          enabled: auth.is_authorized,
+          max_tokens_per_request: auth.super_bots?.max_tokens_per_request || 1000,
+          bot_capabilities: auth.super_bots?.bot_capabilities || [],
           token_usage: {
             total_tokens: 0,
             last_used: new Date().toISOString()
           } as TokenUsage
-        })) as Bot[]
-      }));
+        })) as Bot[] || []
+      }];
 
       return {
         users: processedUsers,
-        tenants: tenantResponse.data || []
+        tenants: [tenantResponse.data]
       };
     }
 
@@ -127,24 +179,17 @@ export const loadData = async () => {
     const usersResponse = await supabase
       .from("super_tenant_users")
       .select(`
+        id,
         user_id,
         tenant_id,
         role,
         allow_bot_access,
-        token_limit,
-        profiles:user_id (
+        interactions_limit,
+        is_active,
+        profiles!user_id (
           email,
-          full_name
-        ),
-        super_tenants!tenant_id (
-          super_tenant_bots (
-            bot_id,
-            enabled,
-            super_bots (
-              id,
-              name
-            )
-          )
+          full_name,
+          company
         )
       `)
       .order("created_at", { ascending: false });
@@ -152,6 +197,30 @@ export const loadData = async () => {
     if (usersResponse.error) {
       console.error("Erro ao carregar usuários:", usersResponse.error);
       throw usersResponse.error;
+    }
+
+    // Buscar todas as autorizações de bots
+    const allBotAuthResponse = await supabase
+      .from("super_tenant_user_bots")
+      .select(`
+        id,
+        user_id,
+        tenant_id,
+        bot_id,
+        is_authorized,
+        super_bots!bot_id (
+          id,
+          name,
+          description,
+          max_tokens_per_request,
+          bot_capabilities,
+          is_active
+        )
+      `);
+
+    if (allBotAuthResponse.error) {
+      console.error("Erro ao carregar autorizações de bots:", allBotAuthResponse.error);
+      throw allBotAuthResponse.error;
     }
 
     const tenantsResponse = await supabase
@@ -172,29 +241,49 @@ export const loadData = async () => {
       .in("user_id", userIds)
       .order("created_at", { ascending: false });
 
+    // Criar mapa de autorizações de bots por usuário
+    const botAuthMap = new Map<string, BotAuthorizationResponse[]>();
+    (allBotAuthResponse.data as unknown as BotAuthorizationResponse[])?.forEach(auth => {
+      const key = `${auth.user_id}-${auth.tenant_id}`;
+      const userBots = botAuthMap.get(key) || [];
+      userBots.push(auth);
+      botAuthMap.set(key, userBots);
+    });
+
     const processedUsers: TenantUser[] = (usersResponse.data as unknown as TenantUserResponse[]).map(user => {
-      const userTokenUsage = tokenUsageResponse.data?.find(tu => tu.user_id === user.user_id);
+      const userTokenUsage = tokenUsageResponse.data?.find(tu => 
+        tu.user_id === user.user_id && 
+        tu.tenant_id === user.tenant_id
+      );
+      const userBotAuths = botAuthMap.get(`${user.user_id}-${user.tenant_id}`) || [];
       
       return {
+        id: user.id,
         user_id: user.user_id,
         tenant_id: user.tenant_id,
         role: user.role,
         allow_bot_access: user.allow_bot_access,
-        token_limit: user.token_limit,
+        interactions_limit: user.interactions_limit,
+        is_active: user.is_active,
         profiles: user.profiles,
         token_usage: userTokenUsage || {
           total_tokens: 0,
           last_used: new Date().toISOString()
         } as TokenUsage,
-        bots: user.tenants?.tenant_bots?.map(tb => ({
-          id: tb.bot_id,
-          name: tb.bots?.name || "Bot Desconhecido",
-          enabled: tb.enabled,
-          token_usage: {
-            total_tokens: 0,
-            last_used: new Date().toISOString()
-          } as TokenUsage
-        })) as Bot[] || []
+        bots: userBotAuths
+          .filter(auth => auth.super_bots?.is_active)
+          .map(auth => ({
+            id: auth.bot_id,
+            name: auth.super_bots?.name || "Bot Desconhecido",
+            description: auth.super_bots?.description || "",
+            enabled: auth.is_authorized,
+            max_tokens_per_request: auth.super_bots?.max_tokens_per_request || 1000,
+            bot_capabilities: auth.super_bots?.bot_capabilities || [],
+            token_usage: {
+              total_tokens: 0,
+              last_used: new Date().toISOString()
+            } as TokenUsage
+          })) as Bot[]
       };
     });
 

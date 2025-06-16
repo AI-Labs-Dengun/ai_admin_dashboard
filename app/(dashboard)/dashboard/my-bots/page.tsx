@@ -49,7 +49,7 @@ interface UserBot {
   bots?: {
     website: string | null;
   };
-  current_token_usage?: number;
+  current_interactions?: number;
 }
 
 interface BotDetails {
@@ -146,27 +146,27 @@ export default function MyBotsPage() {
 
   const fetchTokenUsage = async (userId: string) => {
     try {
-      console.log('🔍 Buscando uso de tokens para usuário:', userId);
+      console.log('🔍 Buscando interações para usuário:', userId);
       
-      const { data: tokenUsage, error } = await supabase
-        .from('token_usage')
-        .select('bot_id, total_tokens')
+      const { data: botUsage, error } = await supabase
+        .from('client_bot_usage')
+        .select('bot_id, interactions')
         .eq('user_id', userId);
 
       if (error) {
-        console.error('❌ Erro ao buscar uso de tokens:', error);
+        console.error('❌ Erro ao buscar interações:', error);
         return;
       }
 
       const usageMap: Record<string, number> = {};
-      tokenUsage?.forEach(usage => {
-        usageMap[usage.bot_id] = usage.total_tokens || 0;
+      botUsage?.forEach(usage => {
+        usageMap[usage.bot_id] = usage.interactions || 0;
       });
 
-      console.log('✅ Uso de tokens carregado:', usageMap);
+      console.log('✅ Interações carregadas:', usageMap);
       setTokenUsageData(usageMap);
     } catch (error) {
-      console.error('❌ Erro ao carregar uso de tokens:', error);
+      console.error('❌ Erro ao carregar interações:', error);
     }
   };
 
@@ -261,7 +261,7 @@ export default function MyBotsPage() {
       // Verificar se o bot está habilitado para o tenant
       console.log('🔍 Verificando status do bot no tenant:', { botId, tenantId });
       const { data: tenantBot, error: tenantBotError } = await supabase
-        .from('tenant_bots')
+        .from('super_tenant_bots')
         .select('enabled')
         .match({
           tenant_id: tenantId,
@@ -290,7 +290,7 @@ export default function MyBotsPage() {
         tenantId 
       });
       const { data: userBot, error: userBotError } = await supabase
-        .from('user_bots')
+        .from('client_bot_usage')
         .select('enabled')
         .match({
           user_id: session.user.id,
@@ -323,7 +323,7 @@ export default function MyBotsPage() {
         tenantId 
       });
       const { data: tenantUser, error: tenantUserError } = await supabase
-        .from('tenant_users')
+        .from('super_tenant_users')
         .select('allow_bot_access')
         .match({
           user_id: session.user.id,
@@ -388,7 +388,7 @@ export default function MyBotsPage() {
 
   const handleTestTokens = async (botId: string, tenantId: string) => {
     try {
-      console.log('🧪 Testando sistema de tokens:', { botId, tenantId });
+      console.log('🧪 Testando sistema de interações:', { botId, tenantId });
       setAccessingBot(botId);
 
       const response = await fetch('/api/test-tokens', {
@@ -399,7 +399,7 @@ export default function MyBotsPage() {
         body: JSON.stringify({
           botId,
           tenantId,
-          tokensToTest: 10
+          interactionsToTest: 1
         }),
       });
 
@@ -407,29 +407,29 @@ export default function MyBotsPage() {
 
       if (!response.ok) {
         console.error('❌ Erro no teste:', data.error);
-        toast.error(data.error || 'Erro ao testar tokens');
+        toast.error(data.error || 'Erro ao testar interações');
         return;
       }
 
-      console.log('✅ Teste de tokens bem-sucedido:', data);
-      toast.success(`Tokens testados com sucesso! ${data.test.tokensUsed} tokens consumidos.`);
+      console.log('✅ Teste de interações bem-sucedido:', data);
+      toast.success(`Interação testada com sucesso!`);
       
       // Mostrar detalhes do teste
       console.log('📊 Detalhes do teste:', {
         antes: data.balanceBefore,
         depois: data.balanceAfter,
-        diferença: data.balanceBefore.usedTokens - data.balanceAfter.usedTokens
+        diferença: data.balanceBefore.interactions - data.balanceAfter.interactions
       });
 
-      // Recarregar dados de uso de tokens para mostrar atualização
+      // Recarregar dados de uso para mostrar atualização
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user?.id) {
         await fetchTokenUsage(session.user.id);
       }
 
     } catch (error) {
-      console.error('❌ Erro ao testar tokens:', error);
-      toast.error('Erro ao testar sistema de tokens');
+      console.error('❌ Erro ao testar interações:', error);
+      toast.error('Erro ao testar sistema de interações');
     } finally {
       setAccessingBot(null);
     }
@@ -511,7 +511,7 @@ export default function MyBotsPage() {
               
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span>Uso de Tokens</span>
+                  <span>Interações</span>
                   <span>{tokenUsageData[bot.bot_id] || 0} / {bot.token_limit}</span>
                 </div>
                 <Progress 
@@ -519,7 +519,7 @@ export default function MyBotsPage() {
                   className="h-2"
                 />
                 <div className="text-xs text-muted-foreground">
-                  Restam: {bot.token_limit - (tokenUsageData[bot.bot_id] || 0)} tokens
+                  Restam: {bot.token_limit - (tokenUsageData[bot.bot_id] || 0)} interações
                 </div>
               </div>
 
@@ -540,7 +540,7 @@ export default function MyBotsPage() {
                     size="sm"
                     onClick={() => handleTestTokens(bot.bot_id, bot.tenant_id)}
                     disabled={!bot.enabled || accessingBot === bot.bot_id}
-                    title="Testar sistema de tokens"
+                    title="Testar sistema de interações"
                   >
                     {accessingBot === bot.bot_id ? (
                       <>

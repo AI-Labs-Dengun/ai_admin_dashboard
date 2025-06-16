@@ -12,7 +12,7 @@ import { AlertTriangle } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { TenantUser } from "@/app/(dashboard)/dashboard/lib/types";
 import { resetUserTokens } from "@/app/(dashboard)/dashboard/lib/tokenManagement";
-import { toggleAllBots, toggleBot } from "@/app/(dashboard)/dashboard/lib/botManagement";
+import { toggleAllBots, toggleBot, updateTenantBotAuthorization, isBotAuthorizedInTenant } from "@/app/(dashboard)/dashboard/lib/botManagement";
 import { cn } from "@/lib/utils";
 
 interface EditUserModalProps {
@@ -27,8 +27,10 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
   const [hasChanges, setHasChanges] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editingUser, setEditingUser] = useState<TenantUser | null>(null);
-  const [tokenLimit, setTokenLimit] = useState<string>("");
+  const [interactionsLimit, setInteractionsLimit] = useState<string>("");
   const [shouldResetTokens, setShouldResetTokens] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [tenantBots, setTenantBots] = useState<any[]>([]);
   const supabase = createClientComponentClient();
 
   useEffect(() => {
@@ -56,7 +58,7 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
         if (userError) throw userError;
 
         // Buscar bots do tenant
-        const { data: tenantBots, error: tenantBotsError } = await supabase
+        const { data: tenantBotsData, error: tenantBotsError } = await supabase
           .from('super_tenant_bots')
           .select(`
             bot_id,
@@ -73,23 +75,23 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
 
         if (tenantBotsError) throw tenantBotsError;
 
-        // Buscar bots do usuário
-        const { data: userBots, error: userBotsError } = await supabase
-          .from('client_bot_usage')
-          .select('bot_id, enabled')
+        // Buscar autorizações de bots do usuário
+        const { data: userBotAuthorizations, error: userBotAuthError } = await supabase
+          .from('super_tenant_user_bots')
+          .select('bot_id, is_authorized')
           .match({ 
             user_id: user.user_id, 
             tenant_id: user.tenant_id 
           });
 
-        if (userBotsError) throw userBotsError;
+        if (userBotAuthError) throw userBotAuthError;
 
-        // Criar um mapa do estado atual dos bots
-        const botStateMap = new Map(
-          userBots?.map(bot => [bot.bot_id, bot.enabled]) || []
+        // Criar um mapa das autorizações atuais
+        const botAuthMap = new Map(
+          userBotAuthorizations?.map(auth => [auth.bot_id, auth.is_authorized]) || []
         );
 
-        // Atualizar o estado do usuário com os dados corretos da base
+        // Atualizar o estado do usuário com os dados corretos
         const userWithCorrectBotState = {
           ...user,
           profiles: {
@@ -98,14 +100,15 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
             email: userData.profiles.email,
             company: userData.profiles.company
           },
-          bots: user.bots?.map(bot => ({
-            ...bot,
-            enabled: botStateMap.get(bot.id) ?? false
+          bots: tenantBotsData?.map(bot => ({
+            ...bot.super_bots,
+            enabled: botAuthMap.get(bot.bot_id) ?? false
           })) || []
         };
 
         setEditingUser(userWithCorrectBotState);
-        setTokenLimit(user.token_limit?.toString() || "0");
+        setTenantBots(tenantBotsData || []);
+        setInteractionsLimit(user.interactions_limit?.toString() || "0");
         setHasChanges(false);
         setShowDeleteConfirm(false);
         setShouldResetTokens(false);
@@ -115,48 +118,35 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
       }
     };
 
+    const checkSuperAdmin = async () => {
+      if (!user) return;
+
+      try {
+        const { data: profile, error: authError } = await supabase
+          .from('profiles')
+          .select('is_super_admin')
+          .eq('id', (await supabase.auth.getUser()).data.user?.id)
+          .single();
+
+        if (authError) throw authError;
+        setIsSuperAdmin(profile?.is_super_admin ?? false);
+      } catch (error) {
+        console.error("Erro ao verificar permissões:", error);
+        toast.error("Erro ao verificar permissões");
+      }
+    };
+
     if (isOpen) {
       loadUserData();
+      checkSuperAdmin();
     }
   }, [user, supabase, isOpen]);
-
-  const handleToggleAllBots = async () => {
-    if (!editingUser) return;
-
-    const newState = !editingUser.allow_bot_access;
-    
-    try {
-      // Atualizar apenas o estado local
-      setEditingUser(prev => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          allow_bot_access: newState,
-          bots: prev.bots?.map(bot => ({
-            ...bot,
-            enabled: newState
-          })) || []
-        };
-      });
-      setHasChanges(true);
-    } catch (error) {
-      console.error("Erro ao atualizar estado dos bots:", error);
-      toast.error("Erro ao atualizar estado dos bots");
-    }
-  };
 
   const handleToggleBot = async (botId: string) => {
     if (!editingUser) return;
 
-    // Se o bot está sendo ativado e o allow_bot_access está false, não permitir
-    const bot = editingUser.bots?.find(b => b.id === botId);
-    if (bot && !bot.enabled && !editingUser.allow_bot_access) {
-      toast.error('É necessário ativar o acesso aos bots primeiro');
-      return;
-    }
-
     try {
-      // Atualizar apenas o estado local
+      // Atualizar o estado local
       setEditingUser(prev => {
         if (!prev) return null;
         const updatedBots = prev.bots?.map(bot => 
@@ -165,12 +155,8 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
             : bot
         ) || [];
         
-        // Se algum bot estiver ativo, ativar o allow_bot_access
-        const hasAnyEnabledBot = updatedBots.some(bot => bot.enabled);
-        
         return {
           ...prev,
-          allow_bot_access: hasAnyEnabledBot,
           bots: updatedBots
         };
       });
@@ -178,20 +164,6 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
     } catch (error) {
       console.error("Erro ao atualizar estado do bot:", error);
       toast.error("Erro ao atualizar estado do bot");
-    }
-  };
-
-  const handleTokenLimitChange = (value: string) => {
-    // Garantir que o valor seja um número válido
-    const numericValue = value.replace(/[^0-9]/g, '');
-    setTokenLimit(numericValue);
-    
-    if (editingUser) {
-      setEditingUser({
-        ...editingUser,
-        token_limit: parseInt(numericValue) || 0
-      });
-      setHasChanges(true);
     }
   };
 
@@ -217,28 +189,30 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
       toast.loading('Salvando alterações...', { id: 'save-changes' });
 
       // 1. Atualizar dados do usuário no tenant_users
-      console.log('1. Atualizando dados do usuário...');
       const { error: updateError } = await supabase
         .from('super_tenant_users')
         .update({
           allow_bot_access: editingUser.allow_bot_access,
-          token_limit: editingUser.token_limit
+          interactions_limit: parseInt(interactionsLimit) || 0
         })
         .match({ 
           user_id: editingUser.user_id, 
           tenant_id: editingUser.tenant_id 
         });
 
-      if (updateError) {
-        console.error('Erro ao atualizar dados do usuário:', updateError);
-        throw updateError;
-      }
+      if (updateError) throw updateError;
 
-      // 2. Atualizar permissões dos bots
-      console.log('2. Atualizando permissões dos bots...');
-      // Primeiro, remover todas as associações existentes
+      // 2. Atualizar autorizações dos bots
+      const botUpdates = editingUser.bots?.map(bot => ({
+        tenant_id: editingUser.tenant_id,
+        user_id: editingUser.user_id,
+        bot_id: bot.id,
+        is_authorized: bot.enabled
+      })) || [];
+
+      // Primeiro, remover todas as autorizações existentes
       const { error: deleteError } = await supabase
-        .from('client_bot_usage')
+        .from('super_tenant_user_bots')
         .delete()
         .match({ 
           user_id: editingUser.user_id, 
@@ -247,33 +221,13 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
 
       if (deleteError) throw deleteError;
 
-      // Depois, criar novas associações para os bots selecionados
-      if ((editingUser.selected_bots ?? []).length > 0) {
-        const botInserts = (editingUser.selected_bots ?? []).map(botId => ({
-          user_id: editingUser.user_id,
-          tenant_id: editingUser.tenant_id,
-          bot_id: botId,
-          enabled: editingUser.allow_bot_access,
-          created_at: new Date().toISOString()
-        }));
+      // Depois, inserir as novas autorizações
+      if (botUpdates.length > 0) {
+        const { error: insertError } = await supabase
+          .from('super_tenant_user_bots')
+          .insert(botUpdates);
 
-        const { error: botError } = await supabase
-          .from('client_bot_usage')
-          .insert(botInserts);
-
-        if (botError) throw botError;
-      }
-
-      // 3. Resetar tokens (se selecionado)
-      if (shouldResetTokens) {
-        console.log('3. Resetando tokens...');
-        try {
-          await resetUserTokens(editingUser.user_id, editingUser.tenant_id);
-          toast.success('Tokens resetados com sucesso!', { id: 'save-changes' });
-        } catch (resetError) {
-          console.error('Erro ao resetar tokens:', resetError);
-          toast.error(`Erro ao resetar tokens: ${resetError instanceof Error ? resetError.message : 'Erro desconhecido'}`, { id: 'save-changes' });
-        }
+        if (insertError) throw insertError;
       }
 
       toast.success('Alterações salvas com sucesso!', { id: 'save-changes' });
@@ -368,36 +322,27 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
           {/* Informações do Usuário */}
           <div className="space-y-2">
             <h3 className="text-lg font-medium">Informações do Usuário</h3>
-            <p>Nome: {editingUser.profiles?.full_name}</p>
-            <p>Email: {editingUser.profiles?.email}</p>
-            <p>Empresa: {editingUser.profiles?.company}</p>
+            <p>Nome: {editingUser?.profiles?.full_name}</p>
+            <p>Email: {editingUser?.profiles?.email}</p>
+            <p>Empresa: {editingUser?.profiles?.company}</p>
           </div>
 
-          {/* Limite de Tokens */}
+          {/* Limite de Interações */}
           <div className="space-y-2">
-            <h3 className="text-lg font-medium">Limite de Tokens</h3>
+            <h3 className="text-lg font-medium">Limite de Interações</h3>
             <div className="flex items-center gap-2">
               <div className="flex-1">
-                <Label>Limite de Tokens</Label>
+                <Label>Limite de Interações</Label>
                 <Input
                   type="text"
-                  value={tokenLimit}
-                  onChange={(e) => handleTokenLimitChange(e.target.value)}
+                  value={interactionsLimit}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/[^0-9]/g, '');
+                    setInteractionsLimit(value);
+                    setHasChanges(true);
+                  }}
                   min={0}
                 />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShouldResetTokens(!shouldResetTokens)}
-                  className={cn(
-                    "transition-colors",
-                    shouldResetTokens && "border-blue-500 bg-blue-50 dark:bg-blue-950"
-                  )}
-                >
-                  Resetar Tokens
-                </Button>
               </div>
             </div>
           </div>
@@ -406,58 +351,50 @@ export function EditUserModal({ user, isOpen, onClose, onSave }: EditUserModalPr
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-medium">Acesso aos Bots</h3>
-              <div className="flex items-center space-x-2">
-                <Label>Acesso a todos os bots</Label>
-                <Switch
-                  checked={editingUser.allow_bot_access}
-                  onCheckedChange={handleToggleAllBots}
-                />
-              </div>
             </div>
 
             <div className="grid gap-3">
-              {editingUser.bots?.map((bot) => (
+              {editingUser?.bots?.map((bot) => (
                 <div 
                   key={bot.id} 
                   className="flex items-center justify-between p-3 rounded-lg border"
                 >
                   <div className="flex items-center space-x-3">
                     <div className="space-y-1">
-                      <Label className="text-sm font-medium">
-                        {bot.name}
-                      </Label>
+                      <div className="flex items-center gap-2">
+                        <Label className="text-sm font-medium">
+                          {bot.name}
+                        </Label>
+                        {isSuperAdmin && (
+                          <Badge 
+                            variant={bot.enabled ? "default" : "destructive"}
+                            className={cn(
+                              "text-xs",
+                              bot.enabled && "bg-green-500 hover:bg-green-600"
+                            )}
+                          >
+                            {bot.enabled ? "Autorizado" : "Não Autorizado"}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">{bot.description}</p>
                       <div className="flex items-center space-x-2 flex-wrap">
                         <Badge variant="outline" className="text-xs">
-                          {bot.token_usage?.total_tokens || 0} tokens
+                          {bot.max_tokens_per_request} tokens/mensagem
                         </Badge>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={async () => {
-                            if (!editingUser) return;
-                            if (!confirm(`Tem certeza que deseja resetar os tokens do bot ${bot.name}?`)) return;
-                            
-                            try {
-                              await resetUserTokens(editingUser.user_id, editingUser.tenant_id, bot.id);
-                              await onSave();
-                            } catch (error) {
-                              console.error("Erro ao resetar tokens do bot:", error);
-                            }
-                          }}
-                        >
-                          Resetar
-                        </Button>
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Label className="text-sm text-muted-foreground">
-                      {bot.enabled ? "Ativado" : "Desativado"}
-                    </Label>
-                    <Switch
-                      checked={bot.enabled}
-                      onCheckedChange={() => handleToggleBot(bot.id)}
-                    />
+                    <div className="flex items-center space-x-2">
+                      <Label className="text-sm text-muted-foreground">
+                        {bot.enabled ? "Ativado" : "Desativado"}
+                      </Label>
+                      <Switch
+                        checked={bot.enabled}
+                        onCheckedChange={() => handleToggleBot(bot.id)}
+                      />
+                    </div>
                   </div>
                 </div>
               ))}

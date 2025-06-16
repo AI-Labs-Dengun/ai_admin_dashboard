@@ -64,7 +64,7 @@ export async function createUser(newUser: NewUser) {
         tenant_id: newUser.tenant_id,
         role: 'admin',
         allow_bot_access: newUser.allow_bot_access,
-        token_limit: newUser.token_limit
+        interactions_limit: newUser.interactions_limit
       }]);
 
     if (tenantUserError) throw tenantUserError;
@@ -135,21 +135,21 @@ export const updateTokenLimit = async (userId: string, tenantId: string, newLimi
     // Verificar permissões
     const permissions = await checkUserPermissions();
     if (!permissions?.isSuperAdmin) {
-      throw new Error("Sem permissão para atualizar limites de tokens");
+      throw new Error("Sem permissão para atualizar limites de interações");
     }
 
     const { error } = await supabase
       .from("super_tenant_users")
-      .update({ token_limit: newLimit })
+      .update({ interactions_limit: newLimit })
       .match({ user_id: userId, tenant_id: tenantId });
 
     if (error) throw error;
 
-    toast.success("Limite de tokens atualizado com sucesso!");
+    toast.success("Limite de interações atualizado com sucesso!");
     return true;
   } catch (error) {
-    console.error("Erro ao atualizar limite de tokens:", error);
-    toast.error(error instanceof Error ? error.message : "Erro ao atualizar limite de tokens");
+    console.error("Erro ao atualizar limite de interações:", error);
+    toast.error(error instanceof Error ? error.message : "Erro ao atualizar limite de interações");
     throw error;
   }
 }; 

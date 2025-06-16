@@ -39,6 +39,21 @@ interface FormattedBot {
   name: string;
   description: string;
   enabled: boolean;
+  max_tokens_per_request: number;
+  bot_capabilities: string[];
+}
+
+interface TenantBotResponse {
+  bot_id: string;
+  enabled: boolean;
+  super_bots: {
+    id: string;
+    name: string;
+    description: string;
+    bot_capabilities: string[];
+    max_tokens_per_request: number;
+    is_active: boolean;
+  };
 }
 
 export default function AdminUsersPage() {
@@ -52,7 +67,7 @@ export default function AdminUsersPage() {
     tenant_id: "",
     allow_bot_access: false,
     selected_bots: [],
-    token_limit: 1000000 // Limite padrão
+    interactions_limit: 1000000
   });
 
   const [bots, setBots] = useState<Bot[]>([]);
@@ -111,12 +126,13 @@ export default function AdminUsersPage() {
             .select(`
               bot_id,
               enabled,
-              super_bots!inner (
+              super_bots!bot_id (
                 id,
                 name,
                 description,
                 bot_capabilities,
-                max_tokens_per_request
+                max_tokens_per_request,
+                is_active
               )
             `)
             .match({ 
@@ -167,12 +183,12 @@ export default function AdminUsersPage() {
 
   const fetchTenantBots = async (tenantId: string) => {
     try {
-      const { data: tenantBots, error } = await supabase
+      const { data: tenantBots, error: tenantBotsError } = await supabase
         .from('super_tenant_bots')
         .select(`
           bot_id,
           enabled,
-          super_bots!inner (
+          super_bots!bot_id (
             id,
             name,
             description,
@@ -181,16 +197,19 @@ export default function AdminUsersPage() {
             is_active
           )
         `)
-        .eq('tenant_id', tenantId);
+        .eq('tenant_id', tenantId)
+        .eq('super_bots.is_active', true);
 
-      if (error) throw error;
+      if (tenantBotsError) throw tenantBotsError;
 
       if (tenantBots) {
-        const formattedBots = tenantBots.map(tb => ({
+        const formattedBots = (tenantBots as unknown as TenantBotResponse[]).map(tb => ({
           id: tb.bot_id,
           name: tb.super_bots.name,
           description: tb.super_bots.description,
-          enabled: tb.enabled
+          enabled: tb.enabled,
+          max_tokens_per_request: tb.super_bots.max_tokens_per_request,
+          bot_capabilities: tb.super_bots.bot_capabilities || []
         }));
         setTenantBots(formattedBots);
       }
@@ -230,7 +249,7 @@ export default function AdminUsersPage() {
         company: '',
         tenant_id: '',
         selected_bots: [],
-        token_limit: 1000000,
+        interactions_limit: 1000000,
         allow_bot_access: true
       });
       await fetchData();
@@ -528,7 +547,7 @@ export default function AdminUsersPage() {
         .from('super_tenant_users')
         .update({
           allow_bot_access: editingUser.allow_bot_access,
-          token_limit: editingUser.token_limit
+          interactions_limit: editingUser.interactions_limit
         })
         .match({ 
           user_id: editingUser.user_id, 
@@ -602,21 +621,19 @@ export default function AdminUsersPage() {
   };
 
   const handleSelectExistingUser = (user: any) => {
-    // Verificar se o usuário já é super admin
     if (user.is_super_admin) {
       toast.error('Não é possível selecionar um super admin');
       return;
     }
 
-    // Configurar o novo usuário com os dados do usuário existente
     setNewUser({
       email: user.email,
       full_name: user.full_name,
       company: user.company,
-      tenant_id: selectedTenant?.id || '',
+      tenant_id: selectedTenant || '',
       allow_bot_access: true,
       selected_bots: tenantBots.map(bot => bot.id),
-      token_limit: 1000000
+      interactions_limit: 1000000
     });
   };
 
@@ -653,7 +670,7 @@ export default function AdminUsersPage() {
                     tenant_id: "",
                     allow_bot_access: false,
                     selected_bots: [],
-                    token_limit: 1000000
+                    interactions_limit: 1000000
                   });
                 }}
                 className="flex-1"
@@ -722,19 +739,19 @@ export default function AdminUsersPage() {
             {newUser.tenant_id && (
               <>
                 <div className="grid gap-2">
-                  <Label htmlFor="token_limit">Limite de Tokens</Label>
+                  <Label htmlFor="interactions_limit">Limite de Interações</Label>
                   <div className="flex items-center space-x-2">
                     <Input
-                      id="token_limit"
+                      id="interactions_limit"
                       type="number"
-                      value={newUser.token_limit}
+                      value={newUser.interactions_limit}
                       onChange={(e) => setNewUser({ 
                         ...newUser, 
-                        token_limit: parseInt(e.target.value) || 0 
+                        interactions_limit: parseInt(e.target.value) || 0 
                       })}
                       className="w-32"
                     />
-                    <Label>tokens</Label>
+                    <Label>interações</Label>
                   </div>
                 </div>
 
@@ -879,8 +896,8 @@ export default function AdminUsersPage() {
                   <p>Último uso: {user.token_usage?.last_used ? new Date(user.token_usage.last_used).toLocaleDateString() : 'Nunca'}</p>
                 </div>
                 <div>
-                  <p className="text-xs sm:text-sm text-gray-500">Limite de Tokens</p>
-                  <p>{user.token_limit || 0} tokens</p>
+                  <p className="text-xs sm:text-sm text-gray-500">Limite de Interações</p>
+                  <p>{user.interactions_limit || 0} interações</p>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Switch
