@@ -233,12 +233,12 @@ export function SearchUserModal({ isOpen, onClose, onSelectUser, shouldRefresh =
                       key={user.id} 
                       className={cn(
                         "transition-colors",
-                        isExistingAdmin 
+                        (isExistingAdmin || user.is_super_admin)
                           ? "bg-muted/50 cursor-not-allowed" 
                           : "cursor-pointer hover:bg-accent"
                       )}
                       onClick={() => {
-                        if (!isExistingAdmin) {
+                        if (!isExistingAdmin && !user.is_super_admin) {
                           onSelectUser(user);
                           onClose();
                         }
@@ -255,10 +255,12 @@ export function SearchUserModal({ isOpen, onClose, onSelectUser, shouldRefresh =
                               </Badge>
                             )}
                           </div>
-                          {isExistingAdmin && (
+                          {(isExistingAdmin || user.is_super_admin) && (
                             <div className="flex items-center gap-2 text-green-600">
                               <CheckCircle2 className="h-5 w-5" />
-                              <span className="text-sm">admin</span>
+                              <span className="text-sm">
+                                {user.is_super_admin ? 'super admin' : 'admin'}
+                              </span>
                             </div>
                           )}
                         </div>
