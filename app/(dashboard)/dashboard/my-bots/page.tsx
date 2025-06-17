@@ -378,6 +378,8 @@ export default function MyBotsPage() {
         return;
       }
 
+      console.log('✅ Sessão obtida com sucesso:', { userId: session.user.id });
+
       // Verificar se o usuário tem permissão de acesso ao bot e interações disponíveis
       const { data: usage, error: usageError } = await supabase
         .from('client_bot_usage')
@@ -385,14 +387,27 @@ export default function MyBotsPage() {
           enabled, 
           interactions, 
           available_interactions,
-          website
+          website,
+          bot_name,
+          bot_id,
+          bot:bot_id (
+            website
+          )
         `)
         .eq('user_id', session.user.id)
         .eq('tenant_id', tenantId)
         .eq('bot_id', botId)
         .maybeSingle();
 
-      console.log('🔍 Dados de uso do bot:', usage);
+      console.log('🔍 Dados de uso do bot:', {
+        usage,
+        error: usageError,
+        queryParams: {
+          userId: session.user.id,
+          tenantId,
+          botId
+        }
+      });
 
       if (usageError) {
         console.error('❌ Erro ao buscar permissão de acesso ao bot:', usageError);
@@ -400,23 +415,44 @@ export default function MyBotsPage() {
         return;
       }
 
-      if (!usage || !usage.enabled) {
-        toast.error('Você não tem autorização para acessar este bot.');
+      if (!usage) {
+        console.error('❌ Nenhum registro de uso encontrado para o bot');
+        toast.error('Registro de uso do bot não encontrado.');
+        return;
+      }
+
+      if (!usage.enabled) {
+        console.error('❌ Bot desativado para este usuário');
+        toast.error('Este bot está desativado para seu usuário.');
         return;
       }
 
       if ((usage.interactions || 0) >= (usage.available_interactions || 0)) {
+        console.error('❌ Limite de interações atingido:', {
+          interactions: usage.interactions,
+          available: usage.available_interactions
+        });
         toast.error('Você atingiu o limite de interações para este bot.');
         return;
       }
 
-      if (!usage.website) {
+      // Usar o website do bot ou do client_bot_usage
+      const botWebsite = usage.website || usage.bot?.website;
+
+      if (!botWebsite) {
+        console.error('❌ URL do bot não configurada:', {
+          botId: usage.bot_id,
+          botName: usage.bot_name,
+          usageWebsite: usage.website,
+          botWebsite: usage.bot?.website
+        });
         toast.error('URL do bot não configurada.');
         return;
       }
 
+      console.log('✅ Redirecionando para URL do bot:', botWebsite);
       // Redirecionar para a URL do bot
-      window.location.href = usage.website;
+      window.location.href = botWebsite;
     } catch (error) {
       console.error('❌ Erro ao acessar bot:', error);
       toast.error('Erro ao acessar bot');
