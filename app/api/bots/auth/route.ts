@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { generateBotToken } from '@/app/(dashboard)/dashboard/lib/jwtManagement';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -47,26 +46,12 @@ export async function POST(request: Request) {
     }
 
     console.log('✅ Bot autenticado:', bot.name);
-
-    // Gerar token JWT para o bot
-    try {
-      const token = await generateBotToken(botId, null, botId);
       
-      console.log('✅ Token gerado para bot:', botId);
-      
-      return NextResponse.json({
-        success: true,
-        token,
-        botId: bot.id,
-        botName: bot.name
-      });
-    } catch (tokenError) {
-      console.error('❌ Erro ao gerar token:', tokenError);
-      return NextResponse.json(
-        { success: false, error: 'Erro ao gerar token' },
-        { status: 500 }
-      );
-    }
+    return NextResponse.json({
+      success: true,
+      botId: bot.id,
+      botName: bot.name
+    });
   } catch (error) {
     console.error('❌ Erro interno na autenticação:', error);
     return NextResponse.json(

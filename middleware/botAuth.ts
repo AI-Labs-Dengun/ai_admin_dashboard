@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { verifyBotToken } from '@/app/(dashboard)/dashboard/lib/jwtManagement';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export async function botAuthMiddleware(request: NextRequest) {
   try {
@@ -9,32 +14,35 @@ export async function botAuthMiddleware(request: NextRequest) {
       return NextResponse.next();
     }
 
-    // Obter o token do header Authorization
+    // Obter o botId do header Authorization
     const authHeader = request.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json(
-        { error: 'Token não fornecido' },
+        { error: 'BotId não fornecido' },
         { status: 401 }
       );
     }
 
-    const token = authHeader.split(' ')[1];
-    const payload = await verifyBotToken(token);
+    const botId = authHeader.split(' ')[1];
 
-    if (!payload) {
+    // Verificar se o bot existe
+    const { data: bot, error } = await supabase
+      .from('bots')
+      .select('id, name')
+      .eq('id', botId)
+      .single();
+
+    if (error || !bot) {
       return NextResponse.json(
-        { error: 'Token inválido ou expirado' },
+        { error: 'Bot não encontrado' },
         { status: 401 }
       );
     }
 
-    // Adicionar informações do token ao request
+    // Adicionar informações do bot ao request
     const requestHeaders = new Headers(request.headers);
-    requestHeaders.set('x-user-id', payload.userId);
-    requestHeaders.set('x-tenant-id', payload.tenantId);
-    requestHeaders.set('x-token-limit', payload.tokenLimit.toString());
-    requestHeaders.set('x-allow-bot-access', payload.allowBotAccess.toString());
-    requestHeaders.set('x-bot-access', JSON.stringify(payload.botAccess));
+    requestHeaders.set('x-bot-id', bot.id);
+    requestHeaders.set('x-bot-name', bot.name);
 
     // Continuar com a requisição
     return NextResponse.next({

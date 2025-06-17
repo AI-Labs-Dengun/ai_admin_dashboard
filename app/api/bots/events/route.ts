@@ -1,23 +1,20 @@
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { verifyBotToken } from '@/app/dashboard/lib/jwtManagement';
 
 export async function POST(request: Request) {
   try {
     const supabase = createRouteHandlerClient({ cookies });
-    const { token, data } = await request.json();
+    const { data } = await request.json();
 
-    // Validar token do bot
-    const tokenData = await verifyBotToken(token);
-    if (!tokenData) {
+    // Obter botId do header
+    const botId = request.headers.get('x-bot-id');
+    if (!botId) {
       return NextResponse.json(
-        { error: 'Token inválido ou expirado' },
+        { error: 'Bot não autenticado' },
         { status: 401 }
       );
     }
-
-    const { userId, tenantId, botId } = tokenData;
 
     // Validar dados recebidos
     if (!data.type || !data.event_data) {
@@ -32,7 +29,6 @@ export async function POST(request: Request) {
       .from('bot_webhooks')
       .insert({
         bot_id: botId,
-        tenant_id: tenantId,
         event_type: data.type,
         event_data: data.event_data,
         created_at: new Date().toISOString()
@@ -54,8 +50,6 @@ export async function POST(request: Request) {
         .from('bot_messages')
         .insert({
           bot_id: botId,
-          tenant_id: tenantId,
-          user_id: userId,
           message: data.message,
           direction: data.direction || 'outgoing',
           created_at: new Date().toISOString()

@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { verifyBotToken } from '@/app/(dashboard)/dashboard/lib/jwtManagement';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,29 +11,19 @@ export async function POST(request: Request) {
     console.log('🐛 Recebendo relatórios de erro');
 
     // Verificar autenticação do bot
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const botId = request.headers.get('x-bot-id');
+    if (!botId) {
       return NextResponse.json(
-        { success: false, error: 'Token não fornecido' },
+        { success: false, error: 'Bot não autenticado' },
         { status: 401 }
       );
     }
 
-    const token = authHeader.split(' ')[1];
-    const botAuth = await verifyBotToken(token);
+    const { errors } = await request.json();
 
-    if (!botAuth) {
+    if (!errors || !Array.isArray(errors)) {
       return NextResponse.json(
-        { success: false, error: 'Token inválido ou expirado' },
-        { status: 401 }
-      );
-    }
-
-    const { botId, errors } = await request.json();
-
-    if (!botId || !errors || !Array.isArray(errors)) {
-      return NextResponse.json(
-        { success: false, error: 'botId e errors (array) são obrigatórios' },
+        { success: false, error: 'errors (array) é obrigatório' },
         { status: 400 }
       );
     }

@@ -161,7 +161,7 @@ export const recordTokenUsage = async (
     // Buscar uso atual de tokens
     const { data: currentUsage, error: usageError } = await supabase
       .from("client_bot_usage")
-      .select("total_tokens")
+      .select("total_tokens, interactions")
       .match({ user_id: userId, tenant_id: tenantId, bot_id: botId })
       .order("created_at", { ascending: false })
       .limit(1)
@@ -170,6 +170,7 @@ export const recordTokenUsage = async (
     if (usageError && usageError.code !== "PGRST116") throw usageError;
 
     const totalTokens = (currentUsage?.total_tokens || 0) + tokensConsumed;
+    const interactions = (currentUsage?.interactions || 0) + 1;
 
     // Registrar novo uso
     const { error: insertError } = await supabase
@@ -181,6 +182,7 @@ export const recordTokenUsage = async (
           bot_id: botId,
           tokens_used: tokensConsumed,
           total_tokens: totalTokens,
+          interactions: interactions,
           action_type: actionType,
           request_timestamp: new Date().toISOString(),
           response_timestamp: new Date().toISOString(),
@@ -250,7 +252,7 @@ export async function recordTokenUsageServer(
     // Buscar uso atual de tokens
     const { data: currentUsage, error: usageError } = await supabase
       .from("client_bot_usage")
-      .select("total_tokens")
+      .select("total_tokens, interactions")
       .match({ user_id: userId, tenant_id: tenantId, bot_id: botId })
       .order("created_at", { ascending: false })
       .limit(1)
@@ -259,6 +261,7 @@ export async function recordTokenUsageServer(
     if (usageError && usageError.code !== "PGRST116") throw usageError;
 
     const totalTokens = (currentUsage?.total_tokens || 0) + tokensConsumed;
+    const interactions = (currentUsage?.interactions || 0) + 1;
 
     // Registrar novo uso
     const { error: insertError } = await supabase
@@ -270,6 +273,7 @@ export async function recordTokenUsageServer(
           bot_id: botId,
           tokens_used: tokensConsumed,
           total_tokens: totalTokens,
+          interactions: interactions,
           action_type: actionType,
           request_timestamp: new Date().toISOString(),
           response_timestamp: new Date().toISOString(),

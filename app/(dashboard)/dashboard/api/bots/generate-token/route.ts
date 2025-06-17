@@ -1,7 +1,6 @@
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { generateBotToken } from '@/app/(dashboard)/dashboard/lib/jwtManagement';
 
 export async function POST(request: Request) {
   try {
@@ -26,7 +25,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Verificar se o usuário tem permissão para gerar tokens
+    // Verificar se o usuário tem permissão para acessar bots
     const { data: tenantUser, error: tenantError } = await supabase
       .from('tenant_users')
       .select('allow_bot_access')
@@ -40,20 +39,16 @@ export async function POST(request: Request) {
       );
     }
 
-    // Gerar token JWT
-    const token = await generateBotToken(userId, tenantId);
-    if (!token) {
-      return NextResponse.json(
-        { error: 'Erro ao gerar token' },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ token });
+    return NextResponse.json({ 
+      success: true,
+      userId,
+      tenantId,
+      allowBotAccess: true
+    });
   } catch (error) {
-    console.error('Erro ao gerar token:', error);
+    console.error('Erro ao processar requisição:', error);
     return NextResponse.json(
-      { error: 'Erro ao gerar token' },
+      { error: 'Erro interno' },
       { status: 500 }
     );
   }

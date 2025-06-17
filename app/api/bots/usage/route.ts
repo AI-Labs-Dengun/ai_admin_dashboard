@@ -60,6 +60,18 @@ export async function POST(request: Request) {
         continue;
       }
 
+      // Buscar uso atual para calcular total_tokens e interactions
+      const { data: currentUsage } = await supabase
+        .from('token_usage')
+        .select('total_tokens, interactions')
+        .match({ user_id: userId, tenant_id: tenantId, bot_id: botId })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      const totalTokens = (currentUsage?.total_tokens || 0) + tokensUsed;
+      const interactions = (currentUsage?.interactions || 0) + 1;
+
       insertData.push({
         bot_id: botId,
         user_id: userId,
@@ -67,8 +79,13 @@ export async function POST(request: Request) {
         session_id: sessionId,
         action_type: action,
         tokens_used: tokensUsed,
+        total_tokens: totalTokens,
+        interactions: interactions,
         metadata: metadata || {},
-        created_at: new Date(timestamp).toISOString()
+        created_at: new Date(timestamp).toISOString(),
+        request_timestamp: new Date(timestamp).toISOString(),
+        response_timestamp: new Date(timestamp).toISOString(),
+        last_used: new Date(timestamp).toISOString()
       });
     }
 
