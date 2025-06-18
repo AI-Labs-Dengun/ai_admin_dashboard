@@ -77,7 +77,7 @@ export function DeleteBotModal({ isOpen, onClose, bot, onSuccess }: DeleteBotMod
         .from("client_user_bots")
         .select(`
           tenant_id,
-          super_tenants!inner (
+          super_tenants (
             name
           ),
           user_id
@@ -85,19 +85,24 @@ export function DeleteBotModal({ isOpen, onClose, bot, onSuccess }: DeleteBotMod
         .eq("bot_id", bot.id)
         .eq("enabled", true);
 
-      if (usageError) throw usageError;
+      if (usageError) {
+        console.error("Erro na query:", usageError);
+        throw new Error(`Erro ao buscar dados: ${usageError.message}`);
+      }
 
       if (usageData && usageData.length > 0) {
         // Agrupar os dados manualmente
         const usageMap = new Map<string, { tenant_name: string; count: number }>();
         
         usageData.forEach(item => {
+          if (!item.super_tenants) return; // Skip if no tenant data
+          
           const existing = usageMap.get(item.tenant_id);
           if (existing) {
             existing.count++;
           } else {
             usageMap.set(item.tenant_id, {
-              tenant_name: item.super_tenants.name,
+              tenant_name: item.super_tenants[0].name,
               count: 1
             });
           }
@@ -118,7 +123,7 @@ export function DeleteBotModal({ isOpen, onClose, bot, onSuccess }: DeleteBotMod
       await handleDeleteBot();
     } catch (error) {
       console.error("Erro ao verificar uso do bot:", error);
-      toast.error("Erro ao verificar uso do bot");
+      toast.error(error instanceof Error ? error.message : "Erro ao verificar uso do bot");
     }
   };
 
