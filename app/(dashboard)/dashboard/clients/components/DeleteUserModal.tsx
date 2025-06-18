@@ -23,6 +23,8 @@ export function DeleteUserModal({ isOpen, onClose, onSuccess, userToDelete }: De
   const [isDeleting, setIsDeleting] = useState(false);
   const [adminPassword, setAdminPassword] = useState("");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [linkedTenants, setLinkedTenants] = useState<any[]>([]);
+  const [loadingLinks, setLoadingLinks] = useState(false);
   const supabase = createClientComponentClient();
 
   useEffect(() => {
@@ -32,6 +34,27 @@ export function DeleteUserModal({ isOpen, onClose, onSuccess, userToDelete }: De
     };
     getCurrentUser();
   }, []);
+
+  useEffect(() => {
+    const fetchLinkedTenants = async () => {
+      if (!userToDelete) return;
+      setLoadingLinks(true);
+      try {
+        // Buscar tenants e bots vinculados ao usuário
+        const { data, error } = await supabase
+          .from('super_tenant_users')
+          .select(`tenant_id, super_tenants(name), client_bot_usage(bot_id, bot_name)`)
+          .eq('user_id', userToDelete.id);
+        if (error) throw error;
+        setLinkedTenants(data || []);
+      } catch (err) {
+        setLinkedTenants([]);
+      } finally {
+        setLoadingLinks(false);
+      }
+    };
+    if (isOpen && userToDelete) fetchLinkedTenants();
+  }, [isOpen, userToDelete]);
 
   const verifyAdminPassword = async () => {
     try {
@@ -94,7 +117,7 @@ export function DeleteUserModal({ isOpen, onClose, onSuccess, userToDelete }: De
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ userId: userToDelete.id }),
+        body: JSON.stringify({ userId: userToDelete.id, adminId: currentUserId }),
       });
 
       if (!response.ok) {
@@ -135,6 +158,29 @@ export function DeleteUserModal({ isOpen, onClose, onSuccess, userToDelete }: De
             <AlertDescription>
               Você está prestes a deletar o usuário: <strong>{userToDelete?.full_name}</strong> ({userToDelete?.email})
             </AlertDescription>
+            {loadingLinks ? (
+              <div className="text-sm text-muted-foreground mt-2">Carregando vínculos...</div>
+            ) : linkedTenants.length > 0 ? (
+              <div className="mt-2 text-sm">
+                <strong>Vínculos encontrados:</strong>
+                <ul className="list-disc list-inside mt-1">
+                  {linkedTenants.map((tenant, idx) => (
+                    <li key={tenant.tenant_id + idx}>
+                      Tenant: {tenant.super_tenants?.name || tenant.tenant_id}
+                      {tenant.client_bot_usage?.length > 0 && (
+                        <ul className="ml-4 list-disc">
+                          {tenant.client_bot_usage.map((bot: any) => (
+                            <li key={bot.bot_id}>Bot: {bot.bot_name || bot.bot_id}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground mt-2">Nenhum vínculo com tenants/bots encontrado.</div>
+            )}
           </Alert>
 
           <div className="grid gap-2">

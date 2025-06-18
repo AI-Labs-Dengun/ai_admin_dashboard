@@ -3,11 +3,11 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
   try {
-    const { userId } = await request.json();
+    const { userId, adminId } = await request.json();
 
-    if (!userId) {
+    if (!userId || !adminId) {
       return NextResponse.json(
-        { error: 'ID do usuário é obrigatório' },
+        { error: 'ID do usuário e do admin são obrigatórios' },
         { status: 400 }
       );
     }
@@ -24,15 +24,19 @@ export async function POST(request: Request) {
       }
     );
 
-    // 1. Remover todas as associações com bots
-    const { error: userBotsError } = await supabaseAdmin
-      .from('client_user_bots')
-      .delete()
-      .eq('user_id', userId);
+    // Verificar se o admin é super_admin
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('is_super_admin')
+      .eq('id', adminId)
+      .single();
 
-    if (userBotsError) throw userBotsError;
+    if (profileError) throw profileError;
+    if (!profile?.is_super_admin) {
+      return NextResponse.json({ error: 'Apenas super admins podem deletar usuários' }, { status: 403 });
+    }
 
-    // 2. Remover uso de tokens
+    // 1. Remover uso de tokens
     const { error: tokenUsageError } = await supabaseAdmin
       .from('client_bot_usage')
       .delete()
@@ -40,7 +44,7 @@ export async function POST(request: Request) {
 
     if (tokenUsageError) throw tokenUsageError;
 
-    // 3. Remover associações com tenants
+    // 2. Remover associações com tenants
     const { error: tenantUsersError } = await supabaseAdmin
       .from('super_tenant_users')
       .delete()
@@ -48,15 +52,15 @@ export async function POST(request: Request) {
 
     if (tenantUsersError) throw tenantUsersError;
 
-    // 4. Remover o perfil
-    const { error: profileError } = await supabaseAdmin
+    // 3. Remover o perfil
+    const { error: profileDeleteError } = await supabaseAdmin
       .from('profiles')
       .delete()
       .eq('id', userId);
 
-    if (profileError) throw profileError;
+    if (profileDeleteError) throw profileDeleteError;
 
-    // 5. Remover o usuário da autenticação
+    // 4. Remover o usuário da autenticação
     const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
 
     if (authError) throw authError;

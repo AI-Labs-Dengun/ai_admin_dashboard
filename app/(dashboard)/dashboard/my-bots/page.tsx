@@ -11,14 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Bot, Info, Search, ExternalLink, Loader2 } from "lucide-react";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -437,14 +429,14 @@ export default function MyBotsPage() {
       }
 
       // Usar o website do bot ou do client_bot_usage
-      const botWebsite = usage.website || usage.bot?.website;
+      const botWebsite = usage.website || usage.bot?.[0]?.website;
 
       if (!botWebsite) {
         console.error('❌ URL do bot não configurada:', {
           botId: usage.bot_id,
           botName: usage.bot_name,
           usageWebsite: usage.website,
-          botWebsite: usage.bot?.website
+          botWebsite: usage.bot?.[0]?.website
         });
         toast.error('URL do bot não configurada.');
         return;
@@ -517,7 +509,7 @@ export default function MyBotsPage() {
       description: bot.bot_description,
       bot_capabilities: bot.bot_capabilities || [],
       contact_email: bot.admin_email,
-      website: bot.bot_website || bot.bot?.website || null,
+      website: bot.bot_website || null,
       max_tokens_per_request: bot.token_limit,
       created_at: bot.created_at
     });
