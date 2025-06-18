@@ -74,7 +74,7 @@ export function DeleteBotModal({ isOpen, onClose, bot, onSuccess }: DeleteBotMod
     try {
       // Buscar tenants e contagem de usuários ativos
       const { data: usageData, error: usageError } = await supabase
-        .from("client_user_bots")
+        .from("client_bot_usage")
         .select(`
           tenant_id,
           super_tenants (
