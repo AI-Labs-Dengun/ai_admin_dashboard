@@ -118,7 +118,7 @@ export default function AdminUsersPage() {
     try {
       const { users: fetchedUsers, tenants: fetchedTenants } = await loadData();
       
-      // Buscar o estado atual dos bots para cada usuário
+      // Buscar o estado atual dos bots para cada usuário com informações de interações
       const usersWithCorrectBotState = await Promise.all(
         fetchedUsers.map(async (user) => {
           const { data: userBots, error: userBotsError } = await supabase
@@ -126,6 +126,10 @@ export default function AdminUsersPage() {
             .select(`
               bot_id,
               enabled,
+              interactions,
+              available_interactions,
+              last_used,
+              total_tokens,
               super_bots!bot_id (
                 id,
                 name,
@@ -142,18 +146,35 @@ export default function AdminUsersPage() {
 
           if (userBotsError) throw userBotsError;
 
-          // Criar um mapa do estado atual dos bots
+          // Criar um mapa do estado atual dos bots com informações de interações
           const botStateMap = new Map(
-            userBots?.map(bot => [bot.bot_id, bot.enabled]) || []
+            userBots?.map(bot => [bot.bot_id, {
+              enabled: bot.enabled,
+              interactions: bot.interactions || 0,
+              available_interactions: bot.available_interactions || 0,
+              last_used: bot.last_used,
+              total_tokens: bot.total_tokens || 0
+            }]) || []
           );
 
           // Atualizar o estado dos bots do usuário
           return {
             ...user,
-            bots: user.bots?.map(bot => ({
-              ...bot,
-              enabled: botStateMap.get(bot.id) ?? false
-            })) || []
+            bots: user.bots?.map(bot => {
+              const botState = botStateMap.get(bot.id);
+              return {
+                ...bot,
+                enabled: botState?.enabled ?? false,
+                interactions: botState?.interactions || 0,
+                available_interactions: botState?.available_interactions || 0,
+                last_used: botState?.last_used,
+                token_usage: {
+                  ...bot.token_usage,
+                  total_tokens: botState?.total_tokens || 0,
+                  last_used: botState?.last_used || new Date().toISOString()
+                }
+              };
+            }) || []
           };
         })
       );
@@ -917,9 +938,16 @@ export default function AdminUsersPage() {
                   <p>{user.role}</p>
                 </div>
                 <div>
-                  <p className="text-xs sm:text-sm text-gray-500">Consumo de Tokens</p>
-                  <p>Total: {user.token_usage?.total_tokens || 0}</p>
-                  <p>Último uso: {user.token_usage?.last_used ? new Date(user.token_usage.last_used).toLocaleDateString() : 'Nunca'}</p>
+                  <p className="text-xs sm:text-sm text-gray-500">Interações Utilizadas</p>
+                  <p>Total: {user.total_interactions || 0} / {user.total_available_interactions || 0}</p>
+                  <p>Último uso: {(() => {
+                    const validDates = user.bots?.map(bot => bot.last_used).filter(date => date && date !== '1970-01-01T00:00:00.000Z');
+                    if (validDates && validDates.length > 0) {
+                      const maxDate = new Date(Math.max(...validDates.map(date => new Date(date).getTime())));
+                      return maxDate.toLocaleDateString();
+                    }
+                    return 'Nunca';
+                  })()}</p>
                 </div>
                 <div>
                   <p className="text-xs sm:text-sm text-gray-500">Limite de Interações</p>
@@ -961,10 +989,11 @@ export default function AdminUsersPage() {
                                 </Label>
                                 <div className="flex items-center space-x-2 flex-wrap">
                                   <Badge variant="outline" className="text-xs">
-                                    {bot.token_usage?.total_tokens || 0} tokens
+                                    {bot.interactions || 0} / {bot.available_interactions || 0} interações
                                   </Badge>
                                   <span className="text-xs text-muted-foreground">
-                                    Último uso: {bot.token_usage?.last_used ? new Date(bot.token_usage.last_used).toLocaleDateString() : 'Nunca'}
+                                    Último uso: {bot.last_used && bot.last_used !== '1970-01-01T00:00:00.000Z' ? 
+                                      new Date(bot.last_used).toLocaleDateString() : 'Nunca'}
                                   </span>
                                 </div>
                               </div>
