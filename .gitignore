@@ -86,3 +86,5 @@ app/proxy/layout.tsx
 admin2.0-docs/
 
 package-lock.json
+database/
+SUPPORT_TICKETS_GUIDE.md
