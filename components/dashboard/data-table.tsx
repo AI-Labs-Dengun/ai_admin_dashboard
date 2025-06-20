@@ -100,12 +100,12 @@ export function DataTable<TData, TValue>({
       </div>
       <div className="flex items-center justify-between space-x-2 py-4">
         <div className="text-sm text-muted-foreground">
-          Showing {table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1} to{" "}
+          A mostrar {table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1} a{" "}
           {Math.min(
             (table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize,
             table.getFilteredRowModel().rows.length,
           )}{" "}
-          of {table.getFilteredRowModel().rows.length} entries
+          de {table.getFilteredRowModel().rows.length} entradas
         </div>
         <div className="flex items-center space-x-2">
           <Button
