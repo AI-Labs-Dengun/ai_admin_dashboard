@@ -34,6 +34,13 @@ export interface TokenUsage {
   };
 }
 
+export interface BotInteractions {
+  interactions: number;
+  available_interactions: number;
+  last_used?: string;
+  total_tokens?: number;
+}
+
 export interface Bot {
   id: string;
   name: string;
@@ -41,7 +48,11 @@ export interface Bot {
   enabled: boolean;
   max_tokens_per_request: number;
   bot_capabilities: string[];
+  interactions?: number;
+  available_interactions?: number;
+  last_used?: string;
   token_usage?: TokenUsage;
+  bot_interactions?: BotInteractions;
 }
 
 export interface TenantUser {
@@ -60,6 +71,8 @@ export interface TenantUser {
   bots?: Bot[];
   token_usage?: TokenUsage;
   selected_bots?: string[];
+  total_interactions?: number;
+  total_available_interactions?: number;
 }
 
 export interface NewUser {
