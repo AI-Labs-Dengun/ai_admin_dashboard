@@ -98,19 +98,19 @@ export const loadData = async () => {
         throw botAuthResponse.error;
       }
 
-      // Buscar uso de tokens
-      const tokenUsageResponse = await supabase
+      // Buscar uso de interações
+      const interactionsResponse = await supabase
         .from("client_bot_usage")
-        .select("id, total_tokens, last_used")
+        .select("id, interactions, available_interactions, last_used")
         .eq("user_id", permissions.userId)
         .eq("tenant_id", userResponse.data?.tenant_id)
         .order("last_used", { ascending: false })
         .limit(1)
         .single();
 
-      if (tokenUsageResponse.error && tokenUsageResponse.error.code !== "PGRST116") {
-        console.error("Erro ao carregar uso de tokens:", tokenUsageResponse.error);
-        throw tokenUsageResponse.error;
+      if (interactionsResponse.error && interactionsResponse.error.code !== "PGRST116") {
+        console.error("Erro ao carregar uso de interações:", interactionsResponse.error);
+        throw interactionsResponse.error;
       }
 
       const tenantResponse = await supabase
@@ -138,19 +138,21 @@ export const loadData = async () => {
           company: userResponse.data.profiles[0].company
         },
         token_usage: {
-          id: tokenUsageResponse.data?.id || '',
+          id: interactionsResponse.data?.id || '',
           user_id: permissions.userId,
           tenant_id: userResponse.data.tenant_id,
           bot_id: '',
-          tokens_used: tokenUsageResponse.data?.total_tokens || 0,
-          total_tokens: tokenUsageResponse.data?.total_tokens || 0,
+          tokens_used: interactionsResponse.data?.interactions || 0,
+          total_tokens: interactionsResponse.data?.interactions || 0,
           action_type: 'chat',
-          request_timestamp: tokenUsageResponse.data?.last_used || new Date().toISOString(),
-          response_timestamp: tokenUsageResponse.data?.last_used || new Date().toISOString(),
-          last_used: tokenUsageResponse.data?.last_used || new Date().toISOString(),
-          created_at: tokenUsageResponse.data?.last_used || new Date().toISOString(),
-          updated_at: tokenUsageResponse.data?.last_used || new Date().toISOString()
+          request_timestamp: interactionsResponse.data?.last_used || new Date().toISOString(),
+          response_timestamp: interactionsResponse.data?.last_used || new Date().toISOString(),
+          last_used: interactionsResponse.data?.last_used || new Date().toISOString(),
+          created_at: interactionsResponse.data?.last_used || new Date().toISOString(),
+          updated_at: interactionsResponse.data?.last_used || new Date().toISOString()
         } as TokenUsage,
+        total_interactions: interactionsResponse.data?.interactions || 0,
+        total_available_interactions: interactionsResponse.data?.available_interactions || 0,
         bots: (botAuthResponse.data as unknown as BotAuthorizationResponse[])?.filter(auth => 
           auth.user_id === userResponse.data.user_id && 
           auth.tenant_id === userResponse.data.tenant_id &&
@@ -162,6 +164,8 @@ export const loadData = async () => {
           enabled: auth.is_authorized,
           max_tokens_per_request: auth.super_bots?.max_tokens_per_request || 1000,
           bot_capabilities: auth.super_bots?.bot_capabilities || [],
+          interactions: 0,
+          available_interactions: 0,
           token_usage: {
             total_tokens: 0,
             last_used: new Date().toISOString()
@@ -233,9 +237,9 @@ export const loadData = async () => {
       throw tenantsResponse.error;
     }
 
-    // Buscar uso de tokens para todos os usuários
+    // Buscar uso de interações para todos os usuários
     const userIds = usersResponse.data.map(user => user.user_id);
-    const tokenUsageResponse = await supabase
+    const interactionsResponse = await supabase
       .from("client_bot_usage")
       .select("*")
       .in("user_id", userIds)
@@ -251,11 +255,20 @@ export const loadData = async () => {
     });
 
     const processedUsers: TenantUser[] = (usersResponse.data as unknown as TenantUserResponse[]).map(user => {
-      const userTokenUsage = tokenUsageResponse.data?.find(tu => 
+      const userInteractions = interactionsResponse.data?.find(tu => 
         tu.user_id === user.user_id && 
         tu.tenant_id === user.tenant_id
       );
       const userBotAuths = botAuthMap.get(`${user.user_id}-${user.tenant_id}`) || [];
+      
+      // Calcular interações totais do usuário
+      const userBotInteractions = interactionsResponse.data?.filter(tu => 
+        tu.user_id === user.user_id && 
+        tu.tenant_id === user.tenant_id
+      ) || [];
+      
+      const totalInteractions = userBotInteractions.reduce((total, bot) => total + (bot.interactions || 0), 0);
+      const totalAvailableInteractions = userBotInteractions.reduce((total, bot) => total + (bot.available_interactions || 0), 0);
       
       return {
         id: user.id,
@@ -266,24 +279,37 @@ export const loadData = async () => {
         interactions_limit: user.interactions_limit,
         is_active: user.is_active,
         profiles: user.profiles,
-        token_usage: userTokenUsage || {
+        token_usage: userInteractions || {
           total_tokens: 0,
           last_used: new Date().toISOString()
         } as TokenUsage,
+        total_interactions: totalInteractions,
+        total_available_interactions: totalAvailableInteractions,
         bots: userBotAuths
           .filter(auth => auth.super_bots?.is_active)
-          .map(auth => ({
-            id: auth.bot_id,
-            name: auth.super_bots?.name || "Bot Desconhecido",
-            description: auth.super_bots?.description || "",
-            enabled: auth.is_authorized,
-            max_tokens_per_request: auth.super_bots?.max_tokens_per_request || 1000,
-            bot_capabilities: auth.super_bots?.bot_capabilities || [],
-            token_usage: {
-              total_tokens: 0,
-              last_used: new Date().toISOString()
-            } as TokenUsage
-          })) as Bot[]
+          .map(auth => {
+            const botInteractions = interactionsResponse.data?.find(tu => 
+              tu.user_id === user.user_id && 
+              tu.tenant_id === user.tenant_id && 
+              tu.bot_id === auth.bot_id
+            );
+            
+            return {
+              id: auth.bot_id,
+              name: auth.super_bots?.name || "Bot Desconhecido",
+              description: auth.super_bots?.description || "",
+              enabled: auth.is_authorized,
+              max_tokens_per_request: auth.super_bots?.max_tokens_per_request || 1000,
+              bot_capabilities: auth.super_bots?.bot_capabilities || [],
+              interactions: botInteractions?.interactions || 0,
+              available_interactions: botInteractions?.available_interactions || 0,
+              last_used: botInteractions?.last_used,
+              token_usage: {
+                total_tokens: botInteractions?.interactions || 0,
+                last_used: botInteractions?.last_used || new Date().toISOString()
+              } as TokenUsage
+            };
+          }) as Bot[]
       };
     });
 
